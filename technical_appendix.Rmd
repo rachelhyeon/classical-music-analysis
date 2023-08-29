@@ -1,0 +1,1447 @@
+---
+title: "Technical Appendix"
+author: "Myung Kyung (Rachel) Hyeon"
+date: "2022-12-11"
+output: 
+  pdf_document:
+    keep_tex: false
+    fig_caption: true
+    toc: true
+    toc_depth: 3
+header-includes:
+  - \usepackage{enumerate}
+  - \usepackage{longtable}
+  - \usepackage{booktabs}
+  - \usepackage{dcolumn}
+  - \usepackage{amsmath}
+  - \usepackage{amsthm}
+  - \usepackage{hyperref}
+  - \usepackage{xcolor}
+  - \DeclareMathOperator{\Cov}{Cov}
+  - \DeclareMathOperator{\Corr}{Corr}
+  - \DeclareMathOperator{\Var}{Var}
+  - \DeclareMathOperator{\upmodels}{\perp \!\!\! \perp}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, include = TRUE, message = FALSE)
+```
+
+\newpage
+
+```{r packages, message=FALSE, warning=FALSE}
+# Load in packages
+library(tidyverse)    # for dplyr, tidyr, ggplot2, tibble etc.
+library(lme4)         # for lmer
+library(HLMdiag)      # for diagnostic plots of multilevel models
+library(arm)          # for DIC
+library(MASS)         # for stepAIC
+library(leaps)        # for regsubsets
+library(car)          # for VIF
+library(texreg)       # for making tables for report
+```
+
+Below contains materials that supplement the statistical analysis done in the paper.
+
+## A. Raw materials for the Data section.
+
+**In this section, I explore the data, looking for usual or unusual relationships, usual or unusual data values, etc. I perform any data cleaning, transformations, etc. that may be needed.**
+
+### A.1 Summary Statistics
+
+```{r load-file}
+# Load in the file
+ratings <- read_csv("ratings.csv")
+ratings
+```
+The following tables show that the researchers really did produce a balanced design:
+
+```{r balanced-design}
+table(ratings$Harmony)
+table(ratings$Instrument)
+table(ratings$Voice)
+
+with(ratings, table(paste(Harmony, Voice, Instrument)))
+```
+
+I print summary statistics for each column of the data, and number of unique values.
+
+```{r summary-stats}
+# Print summary for each column
+for (i in names(ratings)) {
+print(summary(ratings[,i]))
+cat("Number of unique values:",nrow(unique(ratings[,i])),"\n\n")
+}
+```
+
+I will not consider `X` (first column, R set its column value to "...1") which are the line numbers in the data set or `first12` in my analysis in accordance with the problem statement.
+
+### A.2 Data Cleaning
+
+While exploring the distribution of the response variables we find that, although they are supposed to be integer ratings from 1 to 10, in fact we find some unusual values for them:
+
+```{r count-responses}
+# Counts of Classical responses:
+rbind(count=table(ratings$Classical))
+
+# Counts of Popular responses:
+rbind(count=table(ratings$Popular))
+```
+
+```{r unusual-responses}
+ratings %>%
+  dplyr::select(c("...1", "Subject", "Classical", "Popular")) %>%
+  filter(Classical > 10 | Popular > 10)
+```
+
+We see
+\begin{itemize}
+\item A Classical rating of 0 was given 8 times, and a Popular rating of 0 was given 25 times.
+\item There are single ratings of 3.5, 4.2,4.6, 6.8, 9.5 and 19 in each response variable.
+\end{itemize}
+
+I will remove the 19's that we found for `Classical` and `Popular` ratings from the data set for the analysis since the value of 19 was probably entered as a mistake (typo). The maximum rating for `Classical` and `Popular` variables is 10. I decided not to recode the ratings of 0 or the non-integer ratings between 1 and 10.  It is reasonable to guess that they reflect the intended responses of listeners who may not have entirely understood the "rate 1 to 10" instructions.
+
+```{r remove-19s}
+# Remove two observations with 19's
+ratings_new <- ratings %>%
+  slice(-c(1166, 1978))
+
+nrow(ratings_new)  # 2 observations got removed successfully
+```
+
+### A.3 Missing Values
+
+Next we see that several variables have a significant portion of missing values:
+
+```{r missing-vals}
+# Count and Percent of Missing Values:
+x <- data.frame(count=sapply(ratings_new,function(x) sum(is.na(x))),
+                percent=sapply(ratings_new,function(x) round(100*mean(is.na(x)),2)))
+x[x$percent!=0,] %>% arrange(desc(percent))
+```
+
+\begin{itemize}
+  \item The missing values in the response variables Classical and Popular cannot (and should not) be imputed, so I will delete those rows.  Further exploration (not shown here) shows that the same rows with missing Classical values are missing the Popular values, and vice versa.
+  \item The variables \texttt{X1stInstr} and \texttt{X2ndInstr} have 60\% and 80\% missing values, respectively, which makes them hard to use and hard to impute so I will delete those variables.
+\end{itemize}
+
+### A.4 Constructing fulldata and nomissdata
+
+Taking into account all of the above, our full data set can be constructed as follows
+
+```{r fulldata}
+# Remove X1stInstr and X2ndInstr columns
+fulldata <- ratings_new[,!(names(ratings_new) %in% c("X1stInstr","X2ndInstr"))]
+
+# Remove NA values for Classical and Popular columns
+fulldata <- fulldata[!is.na(fulldata$Classical),]
+fulldata <- fulldata[!is.na(fulldata$Popular),]
+```
+
+From the tables and counts below we see that we have lost 29 rows (deleting 27 rows with missing responses and deleting 2 rows with 19's) and 4 columns (deleting the two variables `X1stInstr` and `X2ndInstr`), and we no longer have a perfectly balanced experiment.
+
+```{r fulldata-stats}
+dim(ratings)                     # Dimension of original data set
+dim(fulldata)                    # Dimension of new data after cleaning
+
+# Counts of different levels of three design variables
+table(fulldata$Harmony)       
+table(fulldata$Instrument)
+table(fulldata$Voice)
+
+with(fulldata, table(paste(Harmony,Voice,Instrument)))
+
+table(fulldata$Classical)        # Counts of Classical responses
+table(fulldata$Popular)          # Counts of Popular responses
+
+length(unique(fulldata$Subject)) # Number of subjects
+```
+
+The \texttt{fulldata} set still has many missing values. For model selection, when I need to compare models on the same data set, it may be useful to have a data set with no missing values. A simple approach is to construct a reduced data set by removing rows with missing values:
+
+```{r nomissdata-stats}
+# Remove all missing values
+nomissdata <- fulldata[apply(fulldata,1,function(x) !any(is.na(x))),]
+dim(fulldata)                       # Dimension of new data after cleaning
+dim(nomissdata)                     # Dimension of data with no missing values
+
+# Counts of different levels of three design variables
+table(nomissdata$Harmony)
+table(nomissdata$Instrument)
+table(nomissdata$Voice)
+
+with(nomissdata, table(paste(Harmony,Voice,Instrument)))
+
+table(nomissdata$Classical)         # Counts of Classical responses
+table(nomissdata$Popular)           # Counts of Popular responses
+
+length(unique(nomissdata$Subject))  # Number of subjects
+```
+
+We have lost nearly 1000 observations and we are down to 43 subjects from the original 70, but the data is still fairly balanced among the experimental conditions, and most of the 43 subjects saw all 36 combinations of Harmony, Instrument and Voice.
+
+### A.5 Distributions of variables
+
+Finally it is worthwhile to look at histograms of the variables (a) to see if the distributions are similar in `fulldata` and `nomissdata` and (b) to check for unusual distributions of any kind.
+
+In the plots on the next two pages, we see that
+
+\begin{itemize}
+
+  \item The distributions of the numeric variables are broadly similar across the two data sets.
+  \item Most variables do not seem to need transformations, either because they are really discrete/categorical variables (e.g. all the variables on a scale from 0 to 5) or they are not sufficiently skewed to warrant transformation.
+  \item Possible exceptions to the previous point are the first three variables plotted, \texttt{Selfdeclare}, \texttt{OMSI} and \texttt{X16.minus.17}. \texttt{Selfdeclare} looks like another categorical variable so I would probably leave it alone. \texttt{OMSI} looks continuous and right-skewed so I could consider a log or similar transformation. \texttt{X16.minus.17} could be shifted and then transformed.
+
+\end{itemize}
+
+but it's not clear how meaningful the transformed variables would be, and so I'm inclined to leave these two variables alone as well.
+
+
+```{r histograms-fulldata}
+# Select continuous variables from fulldata
+ratings_cont_fulldata <- fulldata %>%
+  dplyr::select(-c(1:5, 24)) %>%
+  as.data.frame()
+
+# Draw histograms for untransformed variables from fulldata
+par(mfrow=c(2, 2))
+for (i in names(ratings_cont_fulldata)) {
+  hist(ratings_cont_fulldata[, i],
+       main=i, xlab="")
+}
+```
+
+
+
+```{r histograms-nomissdata}
+# Select continuous variables from nomissdata
+ratings_cont_nomiss <- nomissdata %>%
+  dplyr::select(-c(1:5, 24)) %>%
+  as.data.frame()
+
+# Draw histograms for untransformed variables from nomissdata
+par(mfrow=c(2, 2))
+for (i in names(ratings_cont_nomiss)) {
+  hist(ratings_cont_nomiss[, i],
+       main=i, xlab="")
+}
+```
+
+The histograms for `nomissdata` and `fulldata` look approximately the same.
+
+I see that `OMSI`, `X16.minus.17`, `NoClass` are right-skewed. I will try a log and square-root transformation on `OMSI` and `NoClass` variables to see if the distribution can be made more Gaussian.
+
+```{r na-zeros}
+# Count how many NAs are already in the columns
+sum(is.na(ratings_cont_fulldata$OMSI))  # 0
+sum(is.na(ratings_cont_fulldata$X16.minus.17))  # 0
+sum(is.na(ratings_cont_fulldata$NoClass))  # 276
+
+# Count how many zeros are in the columns
+length(which(ratings_cont_fulldata$OMSI == 0))  # 0
+length(which(ratings_cont_fulldata$X16.minus.17 == 0))  # 683
+length(which(ratings_cont_fulldata$NoClass == 0))  # 926
+```
+
+Since we have a lot of zeros for `X16.minus.17` and `NoClass`, taking a log of zero will produce infinity. Therefore, we want to slightly add a value to them before taking a log transform.
+
+```{r log-transformation}
+moved_X16.minus.17 <- ratings_cont_fulldata$X16.minus.17 + 0.1
+moved_NoClass <- ratings_cont_fulldata$NoClass + 0.1
+
+# Plot histograms after log transformation
+log_OMSI <- log(ratings_cont_fulldata$OMSI)
+log_X16.minus.17 <- log(moved_X16.minus.17)
+log_NoClass <- log(moved_NoClass)
+
+par(mfrow=c(2, 2))
+hist(log_OMSI, main="log(OMSI)")
+hist(log_X16.minus.17, main="log(X16.minus.17)")
+hist(log_NoClass, main="log(NoClass)")
+```
+
+```{r sqrt-transformation, warning=FALSE}
+# Plot histograms after sqrt transformation
+sqrt_OMSI <- sqrt(ratings_cont_fulldata$OMSI)
+sqrt_X16.minus.17 <- sqrt(moved_X16.minus.17)
+sqrt_NoClass <- sqrt(moved_NoClass)
+
+par(mfrow=c(2, 2))
+hist(sqrt_OMSI, main="sqrt(OMSI)")
+hist(sqrt_X16.minus.17, main="sqrt(X16.minus.17)")
+hist(sqrt_NoClass, main="sqrt(NoClass)")
+```
+
+From the histograms, it looks like `X16.minus.17` and `NoClass` does not benefit much from the transformation. Therefore, I will not transform those two variables. Although performing a log transform on `OMSI` improved the distribution of OMSI and made it more Gaussian, I will not apply transformation to it to make the results more interpretable.
+
+**In my work below, Classical will not appear in any models for Popular, or vice-versa.**
+
+## B. Statistical Analysis for Research Question 1
+
+As a reminder, our first research question is:
+
+\begin{enumerate}
+    \item What experimental factor, or combinations of factors, has the strongest influence on ratings?
+    \begin{enumerate}
+        \item Does Instrument exert the strongest influence among the three design factors (Instrument, Harmonic Motion, Voice Leading), as the researchers suspect?
+        \item Among the levels of Harmonic Motion does I-V-VI have a strong association (the strongest) with classical ratings? Does it seem to matter whether the respondent is familiar with one or the other (or both) of the Pachelbel rants/comedy bits?
+        \item Among the levels of Voice Leading, does contrary motion have a strong (the strongest) association with classical ratings?
+    \end{enumerate}
+\end{enumerate}
+
+
+### B.1 Selecting three experimental factors and their interactions
+
+**I will examine the influence of the three main experimental factors (Instrument, Harmony and Voice) on Classical ratings, using conventional linear models and analysis of variance models. I will comment briefly on the findings, providing suitable brief evidence for each result. Since there are only three factors here, it is worth considering interactions of all orders.**
+
+First, I will fit model without any interaction, model with two-way interactions, and model with three-way interactions. I will perform an ANOVA test to see whether I need the nested model.
+
+```{r lm-models}
+# Fit one-way, two-way, and three-way interaction models
+lm.oneway <- lm(Classical ~ Instrument + Harmony + Voice, data=fulldata)
+lm.twoway <- lm(Classical ~ (Instrument + Harmony + Voice)^2, data=fulldata)
+lm.threeway <- lm(Classical ~ (Instrument + Harmony + Voice)^3, data=fulldata)
+```
+
+```{r summary-lm.oneway}
+summary(lm.oneway)
+```
+
+All three experimental factors have statistically significant models that should be included in the model. F-statistic of 122 suggests that our model with predictors (but without any interaction) is better than the intercept-only model.
+
+```{r summary-lm.twoway}
+summary(lm.twoway)
+```
+
+When we fit the model with two-way interactions, the predictors `Voicepar3rd` and `Voicepar5th` becomes insignificant. `HarmonyI-V-VI:Voicepar3rd` is the only statistically significant two-way interaction as its p-value is less than 0.05. The ANOVA test suggests that our model with two-way interactions is still better than the intercept-only model.
+
+We will perform an ANOVA test between `lm.oneway` and `lm.twoway` models since `lm.oneway` is nested within `lm.twoway` to see which is the better model.
+
+```{r anova-1}
+anova(lm.oneway, lm.twoway)
+```
+
+The ANOVA test shows that `lm.oneway`, our additive model without any interaction, is preferred over the `lm.twoway` model with two-way interactions since the p-value testing the null hypothesis that there are no difference in means cannot be rejected.
+
+```{r summary-lm.threeway}
+summary(lm.threeway)
+```
+
+When we fit the model with three-way interactions, the predictors `Voicepar3rd` and `Voicepar5th` becomes insignificant. `HarmonyI-V-VI:Voicepar3rd` is still the only statistically significant two-way interaction as its p-value is less than 0.05. There are no statistically significant three-way interaction. The F-statistic is 25 and the p-value is less than 0.05, which suggests that our model with three-way interactions is still better than the intercept-only model.
+
+We will perform an ANOVA test between `lm.oneway` and `lm.threeway`, and `lm.twoway` and `lm.threeway` models since `lm.oneway` and `lm.twoway` are nested within `lm.threeway`. This way we can see which is the better model.
+
+```{r anova-2}
+anova(lm.oneway, lm.threeway)
+anova(lm.twoway, lm.threeway)
+```
+
+The ANOVA test shows that `lm.oneway`, our additive model without any interaction, is preferred over the `lm.threeway` model with two-way interactions because the null hypothesis that there is no difference between the group means cannot be rejected. The ANOVA test shows that `lm.twoway` is still preferred over the `lm.threeway` model. Since we already tested before that `lm.oneway` should be preferred over `lm.twoway`, `lm.oneway` still remains as the optimal model.
+
+Therefore, interaction between the three predictors seems to be unneeded, and additive model seems to suffice based on the ANOVA test.
+
+However, since the interaction between `Voice` and `Harmony` were statistically significant, we will test the additive model with the additive model with the interaction between `Voice` and `Harmony`.
+
+```{r lm-models-2}
+lm.twoway.red <- lm(Classical ~ Instrument + Harmony + Voice +
+                     Voice:Harmony, data=fulldata)
+lm.int <- lm(Classical ~ 1, data=fulldata)
+```
+
+```{r anova-3}
+anova(lm.oneway, lm.twoway.red)
+```
+
+The ANOVA test prefers the model with interaction between `Voice` and `Harmony`.
+
+Based on the result of the ANOVA tests, ANOVA test favors the models in this following descending order (model at the top of the list is the model that ANOVA prefers the most):
+
+\begin{enumerate}
+  \item \texttt{lm.twoway.red}
+  \item \texttt{lm.oneway}
+  \item \texttt{lm.twoway}
+  \item \texttt{lm.threeway}
+\end{enumerate}
+
+Now, I will compare the AIC and BIC for intercept-only model (`lm.int`), additive model with no interactions (`lm.oneway`), additive model with interaction term `Voice:Harmony` (`lm.twoway.red`), model with all two-way interactions (`lm.twoway`), and model with all three-way interactions (`lm.threeway`).
+
+```{r aic-bic-lm}
+IC <- function(M) {
+    x <-c(AIC=AIC(M),BIC=BIC(M))
+    return(x)
+}
+
+print(x <- rbind(lm.int=IC(lm.int),
+      lm.oneway=IC(lm.oneway),
+      lm.twoway.red=IC(lm.twoway.red),
+      lm.twoway=IC(lm.twoway),
+      lm.threeway=IC(lm.threeway))
+)
+
+x <- as.data.frame(x)
+
+x[x$AIC==min(x$AIC),]
+
+x[x$BIC==min(x$BIC),]
+```
+
+There is some evidence in favor of keeping the `Voice:Harmony` interaction (AIC, and ANOVA comparing this model with the no-interactions (`lm.oneway`) model), but also some evidence against (BIC, and ANOVA comparing the model with all two-way interactions with the no-interactions model).
+
+I decided to keep the `Voice:Harmony` interaction term in the following analysis.
+
+### B.2 Testing if random intercept is needed
+
+**In this section, I re-examine the influence of the three main experimental factors (Instrument, Harmony and Voice) on Classical ratings using models that always include the random intercept for participants.**
+
+The multi-level model with random intercept is:
+\begin{align}
+  y &= \alpha_{0 j[i]} + \beta_1 x_1 + \beta_2 x_2 + \beta_3 x_3 \\
+  \alpha_{0j} &= \beta_0 + \eta_{0j}
+\end{align}
+
+where $y$ is `Classical`, $\alpha_{0j}$ is the random intercept, $\beta_0$ is fixed effect of the intercept, $\eta_{0j}$ is the random effect of the intercept, $\beta_1$, $\beta_2$, and $\beta_3$ are the coefficients of `Instrument`, `Harmony`, and `Voice`, respectively, $j$'s are `Subjects`, and $i$'s are observations. 
+
+The groups are shown in the `Subject` variable, which identifies which participant gave which rating. Therefore, the observations that correspond to one participant consists of a group.
+
+The multi-level model above can be written in variance-components form:
+\begin{equation}
+  y = \beta_0 + \eta_{0j[i]} + \beta_1 x_1 + \beta_2 x_2 + \beta_3 x_3
+\end{equation}
+
+In `lmer` notation, it is `lmer(y ~ 1 + x1 + x2 + x3 + (1|group))`. We will set `REML = F` because likelihood should be evaluated at the Maximum Likelihood Estimates (MLE).
+
+```{r lmer-models}
+# Fit one-way, two-way, and three-way interaction models with random intercept
+lmer.oneway <- lmer(Classical ~ 1 + Instrument + Harmony + Voice +
+                      (1|Subject),
+                    data=fulldata, REML=F)
+lmer.twoway <- lmer(Classical ~ 1 + (Instrument + Harmony + Voice)^2 +
+                      (1|Subject),
+                    data=fulldata, REML=F)
+lmer.threeway <- lmer(Classical ~ 1 + (Instrument + Harmony + Voice)^3 +
+                        (1|Subject),
+                      data=fulldata, REML=F)
+```
+
+```{r summary-lmer.oneway}
+summary(lmer.oneway)
+```
+
+`HarmonyI-V-IV` and `HarmonyIV-I-V` have standard errors that are big so that the confidence interval for the coefficient estimates overlap with zero (also the t value is less than the absolute value of 2). This shows that the two coefficients are not statistically significant. All other coefficients seems to be statistically significant.
+
+I will compare `lmer.oneway` model with just the random intercept model `lmer(Classical ~ 1 + (1|Subject))` using ANOVA.
+
+```{r lmer-models-2}
+lmer.int <- lmer(Classical ~ 1 + (1|Subject), data=fulldata, REML=F)
+```
+
+```{r anova-4}
+anova(lmer.int, lmer.oneway)
+```
+
+The $\chi^2$ statistic is 1014, and the corresponding p-value is less than 0.05. This means that our `lmer.oneway` model with three predictors in addition to the random intercept is a better model than `lmer.int` which is the random intercept only model. We can see that AIC and BIC is also lower for `lmer.oneway` model, confirming the result of the $\chi^2$ test.
+
+```{r summary-lmer.twoway}
+summary(lmer.twoway)
+```
+
+Looking at the main effects, `HarmonyI-V-IV`, `HarmonyIV-I-V`, `Voicepar5th` have standard errors that are big so that the confidence interval for the coefficient estimates overlap with zero (also the t value is less than the absolute value of 2), and are not statistically significant. Looking at the two-way interaction terms, all the two-way interaction terms except for `HarmonyI-V-VI:Voicepar3rd` and `HarmonyIV-I-V:Voicepar3rd` have big standard errors so that the confidence interval for the coefficient estimates overlap with zero, and are not statistically significant. The fixed effect intercept $\beta_0$ is estimated to be 4.37, $\tau^2$ is estimated to be 1.67, and $\sigma^2$ is estimated to be 3.48, which are similar to the estimates in `lmer.oneway`.
+
+I will compare `lmer.twoway` model with just the random intercept model `lmer(Classical ~ 1 + (1|Subject))` and `lmer.oneway` model using ANOVA.
+
+```{r anova-5}
+anova(lmer.int, lmer.twoway)
+anova(lmer.oneway, lmer.twoway)
+```
+
+Comparing `lmer.int` with `lmer.twoway`, the $\chi^2$ statistic is 1044, and the corresponding p-value is less than 0.05. This means that our `lmer.twoway` model with three predictors and their two-way interactions in addition to the random intercept is a better model than `lmer.int` which is the random intercept only model. We can see that AIC and BIC is also lower for `lmer.twoway` model, confirming the result of the $\chi^2$ test.
+
+Comparing `lmer.oneway` with `lmer.twoway`, the $\chi^2$ statistic is 31, and the corresponding p-value is less than 0.05. This means that our `lmer.twoway` model is a better model than `lmer.oneway` which has one-way interactions. We see that AIC chooses `lmer.twoway` model because AIC prefers a more complicated model that gives lower prediction error and BIC chooses `lmer.oneway` because BIC prefers a simpler model that is closer to the true model. So our results match what we expect.
+
+```{r summary-lmer.threeway}
+summary(lmer.threeway)
+```
+
+Looking at the main effects, `HarmonyI-V-IV`, `HarmonyIV-I-V`, `Voicepar3rd`, and `Voicepar5th` have standard errors that are big so that the confidence interval for the coefficient estimates overlap with zero (also the t value is less than the absolute value of 2), and are not statistically significant. Looking at the two-way interaction terms, all the two-way interaction terms except for `HarmonyI-V-VI:Voicepar3rd` have big standard errors so that the confidence interval for the coefficient estimates overlap with zero, and are not statistically significant. All the three-way interaction terms except for `Instrumentstring:HarmonyI-V-VI:Voicepar3rd` and `Instrumentstring:HarmonyI-V-IV:Voicepar5th` seem to be not statistically significant, although the confidence intervals for \newline
+`Instrumentstring:HarmonyI-V-VI:Voicepar3rd` and `Instrumentstring:HarmonyI-V-IV:Voicepar5th` barely escape 0, meaning that they are pretty much statistically insignificant as well.
+
+I will compare `lmer.threeway` model with just the random intercept model `lmer(Classical ~ 1 + (1|Subject))`, `lmer.oneway`, and `lmer.twoway` model using ANOVA.
+
+```{r anova-6}
+anova(lmer.int, lmer.threeway)
+anova(lmer.oneway, lmer.threeway)
+anova(lmer.twoway, lmer.threeway)
+```
+
+Comparing `lmer.int` with `lmer.threeway`, the $\chi^2$ statistic is 1062, and the corresponding p-value is less than 0.05. This means that our `lmer.threeway` model with three predictors and their three-way interactions in addition to the random intercept is a better model than `lmer.int` which is the random intercept only model. We can see that AIC and BIC is also lower for `lmer.threeway` model, confirming the result of the $\chi^2$ test. Comparing `lmer.oneway` with `lmer.threeway`, the $\chi^2$ statistic is 49, and the corresponding p-value is less than 0.05. This means that our `lmer.threeway` model with three predictors and and their three-way interaction in addition to the random intercept is a better model than `lmer.oneway` which has one-way interactions. We see that AIC and BIC chooses `lmer.oneway` model which contradicts our result of the $\chi^2$ test. Comparing `lmer.twoway` with `lmer.threeway`, the $\chi^2$ statistic is 18, and the corresponding p-value is greater than 0.05. This means that our `lmer.twoway` model is a better model than `lmer.threeway`. We see that AIC and BIC chooses `lmer.twoway` model which confirms our result of the $\chi^2$ test. 
+
+Finally, I will test if I could only include the statistically significant two-way interaction, `Harmony:Voice` in the model.
+
+```{r lmer-models-3}
+lmer.twoway.red <- lmer(Classical ~ Instrument + Harmony + Voice +
+                          Harmony:Voice + (1|Subject),
+                        data=fulldata, REML=F)
+```
+
+```{r summary-lmer.twoway.red}
+summary(lmer.twoway.red)
+```
+
+I will use ANOVA to compare between `lmer.twoway.red` and `lmer.twoway`.
+
+```{r anova-7}
+anova(lmer.twoway.red, lmer.twoway)
+```
+
+It seems like `lmer.twoway.red` model is a better model from the $\chi^2$ because the p-value is greater than 0.05 meaning that we cannot reject the null hypothesis that the reduced model is a better model.
+
+Based on the result of the ANOVA tests, ANOVA test favors the models in this following descending order (model at the top of the list is the model that ANOVA prefers the most):
+
+\begin{enumerate}
+  \item \texttt{lmer.twoway.red}
+  \item \texttt{lmer.twoway}
+  \item \texttt{lmer.threeway}
+  \item \texttt{lmer.oneway}
+  \item \texttt{lmer.int}
+\end{enumerate}
+
+Therefore, it seems like `lmer.twoway.red` model with only one interaction between `Harmony` and `Voice` seems to be the optimal model.
+
+Finally, I will compare the AIC and BIC between all the `lmer` models that I have tested so far.
+
+```{r aic-bic-lmer}
+IC <- function(M) {
+    M.ml <- update(M,REML=F)  ## ensure the model is fitted with REML=F
+    x <-c(AIC=AIC(M.ml),BIC=BIC(M.ml))
+    return(x)
+}
+
+
+print(x <- rbind(lmer.int=IC(lmer.int),
+      lmer.oneway=IC(lmer.oneway),
+      lmer.twoway.red=IC(lmer.twoway.red),
+      lmer.twoway=IC(lmer.twoway),
+      lmer.threeway=IC(lmer.twoway)
+))
+
+x <- as.data.frame(x)
+
+x[x$AIC==min(x$AIC),]
+
+x[x$BIC==min(x$BIC),]
+```
+
+Each `lmer` model fits better than the corresponding `lm` model, in the sense that the AIC and BIC are always lower for the `lmer` model than the `lm` model.  This already suggests that the random effect is useful (though we should check this with DIC also). Once again, AIC picks the model with `Voice:Harmony` interaction, and `BIC` picks the no-interaction model.
+
+**Next, I will verify whether the random effect needed by calculating the difference in DIC values between the `lm` models and `lmer` models. If the difference is greater than 10, then we can verify that the random effect is needed.**
+
+```{r dic-diff-lmer-lm}
+# We begin by defining AIC, BIC, and DIC so that they apply to both
+# lmer models with mle's and to lm models.
+
+# From now on I'll assume that AIC, BIC and DIC are evaluated on lmer
+# models with REML=F
+
+# AIC -- no change needed
+# BIC -- no change needed
+# DIC -- need to check to see if the model is lm or lmer
+
+
+DIC <- function(M) {
+         if(class(M)=="lm") { x <- AIC(M) }
+         else { x <- unname(extractDIC(M)) }   
+         return(x)
+       }
+
+IC <- function(M) {
+    if (class(M)=="lm") { M.ml <- M }  # don't have to refit lm() models.
+    else { M.ml <- update(M,REML=F) }  # ensure that lmer() is fitted with REML=F
+    x <-c(AIC=AIC(M.ml),BIC=BIC(M.ml),DIC=DIC(M.ml))
+    return(x)
+}
+
+# I'm going to go ahead and calculate all the IC's for all the models, 
+# in case it is interesting to look at them later
+
+x1 <- rbind(lm.int=IC(lm.int),
+      lm.oneway=IC(lm.oneway),
+      lm.twoway.red=IC(lm.twoway.red),
+      lm.twoway=IC(lm.twoway),
+      lm.threeway=IC(lm.threeway))
+
+x2 <- rbind(lmer.int=IC(lmer.int),
+      lmer.oneway=IC(lmer.oneway),
+      lmer.twoway.red=IC(lmer.twoway.red),
+      lmer.twoway=IC(lmer.twoway),
+      lmer.threeway=IC(lmer.threeway))
+
+# All I am really interested in is the difference in DIC values between 
+# the lm models (which do not have a random effect) and the lmer models
+# (which have a random intercept for each listener).
+
+cbind("DIC(lm)-DIC(lmer)" = x1[,3] - x2[,3])
+```
+
+The differences in DIC values between models without a random intercept (the `lm` models) and models with a random intercept (the `lmer` models) is never less than 400, and always favors the `lmer` model with the random intercept. For the two models that seem to be working best, the no-interactions model and the model that adds `Voice:Harmony` to that model, the difference is around 800.  
+ 
+Since we know a difference of 3 is interesting and a difference of 10 is really something to pay attention to, clearly the random intercept for each person is important to have in the model, regardless of which fixed effects we use.
+
+### B.3 Testing if random slopes are needed
+
+**The random intercept in a repeated measures model can account for “personal biases” in ratings: for example, perhaps person A is more inclined to rate everything as classical, and person B is more inclined to rate everything as popular. This can be accounted for by the random intercept. Alternatively, perhaps personal biases vary with the type of instrument, type of harmony, and/or type of voice leading. For example, perhaps people vary in the degree to which they are inclined to call music played by a string quartet “classical”. This suggests, e.g., a random effect of the form (Instrument|Subject) or (0 + Instrument|Subject) (and similarly for Harmony and Voice). One could argue for a similar random effect for each person/harmony combination, and for each person/voice leading combination.**
+
+**I will determine whether the final model selected in B.2 (`lmer.twoway.red`) is improved by adding one or more of these three new random effect terms. I will find the best combination of these terms.**
+
+There are two things to note before I begin:
+\begin{itemize}
+\item When I am considering more than one random effect, I can model without correlations, for example like this:
+\begin{verbatim}
+Classical ~ Instrument + Voice + Harmony + (1|Subject) +
+(0+Instrument|Subject) + (0+Voice|Subject) 
+\end{verbatim}
+or with correlations, for example like this:
+\begin{verbatim}
+Classical ~ Instrument + Voice + Harmony + (1 + Inst + Voice | Subject)
+\end{verbatim}
+\end{itemize}
+
+I am going to first try to model without correlations because it turns out that the models are a little more interpretable if we force some correlations to be zero. I will also compare final model that we got without correlations with the model with correlations because the model with correlations fit better.
+
+I will first calculate the DIC for three models with `(0 + Instrument|Subject)`, `(0 + Harmony|Subject)`, `(0 + Voice|Subject)` added to `lmer.twoway.red`.
+
+```{r rand-1}
+# Models with one random effect
+lmer.rand.inst <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice + 
+                        (1|Subject) +
+                        (0 + Instrument|Subject),
+                       data=fulldata, REML=F)
+
+lmer.rand.har <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice + 
+                        (1|Subject) +
+                        (0 + Harmony|Subject),
+                      data=fulldata, REML=F)
+
+lmer.rand.voice <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice + 
+                        (1|Subject) +
+                        (0 + Voice|Subject),
+                      data=fulldata, REML=F)
+```
+
+```{r rand-2}
+# Models with two random effects
+lmer.rand.inst.har <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice +
+                          (1|Subject) +
+                          (0 + Instrument|Subject) +
+                          (0 + Harmony|Subject),
+                        data=fulldata, REML=F)
+
+lmer.rand.inst.voice <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice + 
+                          (1|Subject) +
+                          (0 + Instrument|Subject) +
+                          (0 + Voice|Subject),
+                        data=fulldata, REML=F)
+
+lmer.rand.voice.har <- lmer(Classical ~ Instrument + Harmony + Voice +
+                              Harmony:Voice +
+                              (1|Subject) +
+                              (0 + Voice|Subject) +
+                              (0 + Harmony|Subject),
+                            data=fulldata, REML=F)
+```
+
+```{r rand-3}
+# Model with three random effects, with correlations forced to be zero
+lmer.rand.full <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice + 
+                        (1|Subject) +
+                        (0 + Instrument|Subject) +
+                        (0 + Harmony|Subject) +
+                        (0 + Voice|Subject),
+                      data=fulldata, REML=F)
+```
+
+I will compare the DIC for all of the models.
+
+```{r aic-bic-dic-rand-effects, warning=FALSE}
+
+print(x <- rbind(
+  lmer.twoway.red=IC(lmer.twoway.red),
+  lmer.rand.inst=IC(lmer.rand.inst),
+  lmer.rand.har=IC(lmer.rand.har),
+  lmer.rand.voice=IC(lmer.rand.voice),
+  lmer.rand.inst.har=IC(lmer.rand.inst.har),
+  lmer.rand.inst.voice=IC(lmer.rand.inst.voice),
+  lmer.rand.voice.har=IC(lmer.rand.voice.har),
+  lmer.rand.full=IC(lmer.rand.full)
+))
+
+x <- as.data.frame(x)
+x[x$AIC==min(x$AIC),]
+x[x$BIC==min(x$BIC),]
+x[x$DIC==min(x$DIC),]
+```
+
+The most complicated model has the lowest DIC.
+
+Now, I will compare the summary of the model with correlation and summary of the model without correlation (for the models with 3 random effects)
+
+```{r rand-3-corr}
+# Model with three random effects, with correlations
+lmer.rand.full.corr <- lmer(Classical ~ Instrument + Harmony + Voice +
+                              Harmony:Voice +
+                              (1 + Instrument + Harmony + Voice|Subject),
+                            data=fulldata, REML=F)
+```
+
+```{r display-rand.full}
+display(lmer.rand.full)
+
+display(lmer.rand.full.corr)
+```
+
+<!-- Comparison between uncorrelated and correlated random slopes -->
+
+Correlations of negative 1 and positive 1 mean that there are really fewer random effects than we have tried to specify. These correlations aren’t necessarily bad (especially because there were no convergence warnings); they are just telling us we could have a simpler model if some of the coefficients shared the same random component $\eta$. It is not so easy to implement a constraint like “sharing $\eta$’s’’ in `lmer()`, so we won’t try. We’ll just observe that the model seems to be a bit over-specified.
+
+The random effects seem to make a bit more sense when the correlations are forced to be zero. For example, comparing the $\tau's$ and $\rho's$ for the `lmer.rand.full` and `lmer.rand.full.corr`, we see that $\hat\sigma$ is almost the same for the two models, but instead of an overall intercept $\eta_{0j}$ (whose $\hat\tau_0$ is so small we could consider omitting it), we are getting a distinct $\eta$ for every level of every design variable, and the correlations between the $\eta$'s make some sense.  For example, referring to `lmer.rand.full`,
+
+\begin{itemize}
+
+  \item Among the $\eta$'s for Instrument, $\hat\rho(\eta_{Instrumentguitar},\eta_{Instrumentstring})=-1.0$ . This suggests that the listeners' personal tendency to call a piece classical when the instrument is strings is equal to and opposite their personal tendency to call it classical when the instrument is guitar.  On the other hand  $\hat\rho(\eta_{Instrumentguitar},\eta_{Instrumentpiano})=0.29$ and $\hat\rho(\eta_{Instrumentpiano},\eta_{Instrumentstring})=-0.31$, suggesting that any personal tendency to call something classical if it is piano is much more ambiguous than for the other two instruments.
+
+  \item Looking at the $\hat\rho$'s among the $\eta$'s for Voice, it seems like the tendency to call something classical doesn't change that much with the type of voice leading; all three $\eta$'s here are pretty highly correlated (estimated correlations of 0.93, 0.97, 0.99) 
+
+  \item Looking at the $\hat\rho$'s among the $\eta$'s for Harmony, the personal tendency to call something classical is pretty much the same for the I-IV-V, I-V-IV and IV-I-V harmonies, but how listeners hear the I-V-VI harmony is somewhat different.
+
+\end{itemize}
+
+Further analysis using the ranef() function to extract estimated $\eta$ values would be useful to confirm these ideas. As modelers we would now have to decide (in consultation with Dr. Jimenez, of course) whether the greater interpretability is worth the substantially worse fits of these models.
+
+In the remainder of this document I will focus on the model `lmer.rand.full` (no fixed-effect interactions, and zero correlations between groups of $\eta$'s) because
+
+\begin{itemize}
+  \item The results for fixed effects are similar to what we would get if we allowed all the $\rho$'s to be estimated, and the random effect correlations are more interpretable. 
+  \item \texttt{lmer} runs a little faster on them, and we have a lot of models to fit below.
+\end{itemize}
+
+
+#### AIC, BIC, and DIC for all models so far
+
+```{r all-aic-bic-dic}
+print(all_IC <- rbind(
+  lm.int=IC(lm.int),
+  lm.oneway=IC(lm.oneway),
+  lm.twoway.red=IC(lm.twoway.red),
+  lm.twoway=IC(lm.twoway),
+  lm.threeway=IC(lm.threeway),
+  lmer.int=IC(lmer.int),
+  lmer.oneway=IC(lmer.oneway),
+  lmer.twoway.red=IC(lmer.twoway.red),
+  lmer.twoway=IC(lmer.twoway),
+  lmer.threeway=IC(lmer.threeway),
+  lmer.rand.inst=IC(lmer.rand.inst),
+  lmer.rand.har=IC(lmer.rand.har),
+  lmer.rand.voice=IC(lmer.rand.voice),
+  lmer.rand.inst.har=IC(lmer.rand.inst.har),
+  lmer.rand.inst.voice=IC(lmer.rand.inst.voice),
+  lmer.rand.voice.har=IC(lmer.rand.voice.har),
+  lmer.rand.full=IC(lmer.rand.full)
+))
+
+all_IC <- as.data.frame(all_IC)
+round(all_IC, 0)
+```
+
+
+### B.4 Final model in mathematical formula.
+
+**I will write the final model (`lmer.rand.full`) in mathematical terms as a hierarchical linear model.**
+
+The `lmer.rand.full` model in mathematical terms as a hierarchical linear model is:
+
+\begin{align}
+  y_i &= \alpha_{0j[i]} + \alpha_{1j[i]} x_{1i} + \alpha_{2j[i]} x_{2i} + \alpha_{3j[i]} x_{3i} + \beta_4 x_{2i}*x_{3i} + \epsilon_i, \epsilon_i \overset{iid}{\sim} N(0, \sigma^2) \\
+  \alpha_{0j} &= \beta_0 + \eta_{0j}, \eta_{0j} \overset{iid}{\sim} N(0, \tau_0^2) \\
+  \alpha_{1j} &= \beta_1 + \eta_{1j}, \eta_{1j} \overset{iid}{\sim} N(0, \tau_1^2) \\
+  \alpha_{2j} &= \beta_2 + \eta_{2j}, \eta_{2j} \overset{iid}{\sim} N(0, \tau_2^2) \\
+  \alpha_{3j} &= \beta_3 + \eta_{3j}, \eta_{3j} \overset{iid}{\sim} N(0, \tau_3^2)
+\end{align}
+
+where
+
+\begin{align}
+  y &= Classical \\
+  x_1 &= Instrument \\
+  x_2 &= Harmony \\
+  x_3 &= Voice \\
+  j &= Subject \\
+  i &= observations
+\end{align}
+
+and $\beta_0$ is the fixed effect intercept and $\eta_{0j}$ is the random effect intercept. $\beta_1$, $\beta_2$, $\beta_3$ are fixed effect coefficients for $x_1$, $x_2$, $x_3$ respectively. $\eta_{1j}$, $\eta_{2j}$, $\eta_{3j}$ are random effect (slope) coefficients for $x_1$, $x_2$, $x_3$ respectively. Since we have multiple levels since $x_1$, $x_2$, $x_3$ are categorical variables, we can represent them in terms of dummy variables that represents which level is "turned on".
+
+#### B.4.1 Multilevel model
+
+\def\c#1{\mbox{\scriptsize\it #1}}
+\begin{eqnarray*}
+\mbox{Classical}_i & = & \alpha_{0j[i]} + 
+\alpha_{\c{guitar},j[i]} \cdot 1_{\{\c{Instrument}_i=\c{guitar}\}} + 
+\alpha_{\c{piano},j[i]} \cdot 1_{\{\c{Instrument}_i=\c{piano}\}} + \\ & &
+\alpha_{\c{string},j[i]} \cdot 1_{\{\c{Instrument}_i=\c{string}\}} + \\ & &  
+\alpha_{\c{contrary},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contracy}\}} + 
+\alpha_{\c{par3rd},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd}\}} + 
+\alpha_{\c{par5th},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th}\}} + \\ & & 
+\alpha_{\c{I-IV-V},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{I-IV-V}\}} + 
+\alpha_{\c{I-V-IV},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{I-V-IV}\}} + \\ & & 
+\alpha_{\c{I-V-VI},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{I-V-VI}\}} + 
+\alpha_{\c{IV-I-V},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\beta_{\c{contrary},\c{I-IV-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{I-IV-V}\}} + \\ & &
+\beta_{\c{contrary},\c{I-V-IV},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{I-V-IV}\}} + \\ & &
+\beta_{\c{contrary},\c{I-V-VI},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{I-V-VI}\}} + \\ & &
+\beta_{\c{contrary},\c{IV-I-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\beta_{\c{par3rd},\c{I-IV-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{I-IV-V}\}} + \\ & &
+\beta_{\c{par3rd},\c{I-V-IV},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{I-V-IV}\}} + \\ & &
+\beta_{\c{par3rd},\c{I-V-VI},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{I-V-VI}\}} + \\ & &
+\beta_{\c{par3rd},\c{IV-I-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\beta_{\c{par5th},\c{I-IV-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{I-IV-V}\}} + \\ & &
+\beta_{\c{par5th},\c{I-V-IV},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{I-V-IV}\}} + \\ & &
+\beta_{\c{par5th},\c{I-V-VI},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{I-V-VI}\}} + \\ & &
+\beta_{\c{par5th},\c{IV-I-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\epsilon_i ~,~~ \epsilon_i \stackrel{iid}{\sim} N(0,\sigma^2)\\
+\alpha_{0j} & = & \beta_0 + \eta_{0j} ~,~~ \eta_{0j} \stackrel{iid}{\sim} N(0,\tau_0^2) \\
+\alpha_{\c{guitar},j} & = & \beta_{\c{guitar}} + \eta_{\c{guitar},j}~,~~ 
+   \eta_{\c{guitar},j} \stackrel{iid}{\sim} N(0,\tau_{\c{guitar}}^2) \\
+\alpha_{\c{piano},j} & = &  \beta_{\c{piano}} + \eta_{\c{piano},j}~,~~ 
+   \eta_{\c{piano},j} \stackrel{iid}{\sim} N(0,\tau_{\c{piano}}^2) \\
+\alpha_{\c{string},j} & = & \beta_{\c{string}} + \eta_{\c{string},j}~,~~ 
+   \eta_{\c{string},j} \stackrel{iid}{\sim} N(0,\tau_{\c{string}}^2) \\
+\alpha_{\c{contrary},j} & = & \beta_{\c{contrary}} + \eta_{\c{contrary},j}~,~~ 
+   \eta_{\c{contrary},j} \stackrel{iid}{\sim} N(0,\tau_{\c{contrary}}^2) \\
+\alpha_{\c{par3rd},j} & = & \beta_{\c{par3rd}} + \eta_{\c{par3rd},j}~,~~ 
+   \eta_{\c{par3rd},j}  \stackrel{iid}{\sim} N(0,\tau_{\c{par3rd}}^2) \\
+\alpha_{\c{par5th},j} & = & \beta_{\c{par5th}} + \eta_{\c{par5th},j}~,~~ 
+   \eta_{\c{par5th},j}  \stackrel{iid}{\sim} N(0,\tau_{\c{par5th}}^2) \\
+\alpha_{\c{I-IV-V},j} & = & \beta_{\c{I-IV-V}} + \eta_{\c{I-IV-V},j}~,~~ 
+   \eta_{\c{I-IV-V},j} \stackrel{iid}{\sim} N(0,\tau_{\c{I-IV-V}}^2) \\
+\alpha_{\c{I-V-IV},j} & = & \beta_{\c{I-V-IV}} + \eta_{\c{I-V-IV},j}~,~~ 
+   \eta_{\c{I-V-IV},j} \stackrel{iid}{\sim} N(0,\tau_{\c{I-V-IV}}^2) \\
+\alpha_{\c{I-V-VI},j} & = & \beta_{\c{I-V-VI}} + \eta_{\c{I-V-VI},j}~,~~ 
+   \eta_{\c{I-V-VI},j} \stackrel{iid}{\sim} N(0,\tau_{\c{I-V-VI}}^2) \\
+\alpha_{\c{IV-I-V},j} & = & \beta_{\c{IV-I-V}} + \eta_{\c{IV-I-V},j}~,~~ 
+   \eta_{\c{IV-I-V},j} \stackrel{iid}{\sim} N(0,\tau_{\c{IV-I-V}}^2) 
+\end{eqnarray*}
+
+
+#### B.4.2 Hierarchical model
+
+It's actually somewhat difficult (or at least tedious) to write the Hierarchical model efficiently.  One way would be to define
+
+\begin{eqnarray*}
+m_i & = & \alpha_{0j[i]} + 
+\alpha_{\c{guitar},j[i]} \cdot 1_{\{\c{Instrument}_i=\c{guitar}\}} + 
+\alpha_{\c{piano},j[i]} \cdot 1_{\{\c{Instrument}_i=\c{piano}\}} + 
+\alpha_{\c{string},j[i]} \cdot 1_{\{\c{Instrument}_i=\c{string}\}} + \\ & &  
+\alpha_{\c{contrary},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contracy}\}} + 
+\alpha_{\c{par3rd},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd}\}} + 
+\alpha_{\c{par5th},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th}\}} + \\ & & 
+\alpha_{\c{I-IV-V},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{I-IV-V}\}} + 
+\alpha_{\c{I-V-IV},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{I-V-IV}\}} + \\ & & 
+\alpha_{\c{I-V-VI},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{I-V-VI}\}} + 
+\alpha_{\c{IV-I-V},j[i]} \cdot 1_{\{\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\beta_{\c{contrary},\c{I-IV-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{I-IV-V}\}} + \\ & &
+\beta_{\c{contrary},\c{I-V-IV},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{I-V-IV}\}} + \\ & &
+\beta_{\c{contrary},\c{I-V-VI},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{I-V-VI}\}} + \\ & &
+\beta_{\c{contrary},\c{IV-I-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{contrary},\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\beta_{\c{par3rd},\c{I-IV-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{I-IV-V}\}} + \\ & &
+\beta_{\c{par3rd},\c{I-V-IV},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{I-V-IV}\}} + \\ & &
+\beta_{\c{par3rd},\c{I-V-VI},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{I-V-VI}\}} + \\ & &
+\beta_{\c{par3rd},\c{IV-I-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par3rd},\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\beta_{\c{par5th},\c{I-IV-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{I-IV-V}\}} + \\ & &
+\beta_{\c{par5th},\c{I-V-IV},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{I-V-IV}\}} + \\ & &
+\beta_{\c{par5th},\c{I-V-VI},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{I-V-VI}\}} + \\ & &
+\beta_{\c{par5th},\c{IV-I-V},j[i]} \cdot 1_{\{\c{Voice}_i=\c{par5th},\c{Harmony}_i=\c{IV-I-V}\}} + \\ & &
+\end{eqnarray*}
+and then write, ignoring the correlations again,
+\begin{eqnarray*}
+Classical_i & \sim & N(m_i,\sigma^2)\\
+\alpha_{0j} & \sim & \beta_0 + \eta_{0j} ~,~~ \eta_{0j} \stackrel{iid}{\sim} N(0,\tau_0^2) \\
+\alpha_{\c{guitar},j} & \sim & N(\beta_{\c{guitar}},\tau_{\c{guitar}}^2) \\
+\alpha_{\c{piano},j} & \sim &  N(\beta_{\c{piano}},\tau_{\c{piano}}^2) \\
+\alpha_{\c{string},j} & \sim & N(\beta_{\c{string}},\tau_{\c{string}}^2) \\
+\alpha_{\c{contrary},j} & \sim & N(\beta_{\c{contrary}},\tau_{\c{contrary}}^2) \\
+\alpha_{\c{par3rd},j} & \sim & N(\beta_{\c{par3rd}},\tau_{\c{par3rd}}^2) \\
+\alpha_{\c{par5th},j} & \sim & N(\beta_{\c{par5th}},\tau_{\c{par5th}}^2) \\
+\alpha_{\c{I-IV-V},j} & \sim & N(\beta_{\c{I-IV-V}},\tau_{\c{I-IV-V}}^2) \\
+\alpha_{\c{I-V-IV},j} & \sim & N(\beta_{\c{I-V-IV}},\tau_{\c{I-V-IV}}^2) \\
+\alpha_{\c{I-V-VI},j} & \sim & N(\beta_{\c{I-V-VI}},\tau_{\c{I-V-VI}}^2) \\
+\alpha_{\c{IV-I-V},j} & \sim & N(\beta_{\c{IV-I-V}},\tau_{\c{IV-I-V}}^2) 
+\end{eqnarray*}
+A fully correct specification would express the random vector of $\alpha$'s as a multivariate normal, like this for the model with random effects `(Instrument + Voice + Harmony || Subject)`, for example:
+
+\small
+\[
+\hspace*{-0.75in}\left[\begin{array}{c}
+\alpha_{0j} \\
+\alpha_{\c{guitar},j} \\
+\alpha_{\c{piano},j}  \\
+\alpha_{\c{string},j} \\
+\alpha_{\c{contrary},j} \\
+\alpha_{\c{par3rd},j} \\
+\alpha_{\c{par5th},j} \\
+\alpha_{\c{I-IV-V},j} \\
+\alpha_{\c{I-V-IV},j} \\
+\alpha_{\c{I-V-VI},j} \\
+\alpha_{\c{IV-I-V},j} 
+\end{array}\right] 
+\stackrel{iid}{\sim}
+N\left(
+\left[\begin{array}{c}
+\beta_{0j} \\
+\beta_{\c{guitar}} \\
+\beta_{\c{piano}} \\
+\beta_{\c{string}} \\
+\beta_{\c{contrary}} \\
+\beta_{\c{par3rd}} \\
+\beta_{\c{par5th}} \\
+\beta_{\c{I-IV-V}} \\
+\beta_{\c{I-V-IV}} \\
+\beta_{\c{I-V-VI}} \\
+\beta_{\c{IV-I-V}} 
+\end{array}\right] ,
+\left[\begin{array}{ccccccccccc}
+\tau_{0j}  \\
+0 & \tau_{\c{guitar}}^2  \\
+0 & \rho_{gp} & \tau_{\c{piano}}^2  \\
+0 & \rho_{gs} &\rho_{ps} & \tau_{\c{string}}^2 & \multicolumn{7}{c}{\mbox{\em(symmetric)}} \\
+0 & 0 & 0 & 0 & \tau_{\c{contrary}}^2 \\
+0 & 0 & 0 & 0 & \rho_{c3} & \tau_{\c{par3rd}}^2 \\
+0 & 0 & 0 & 0 & \rho_{c5} & \rho_{35} & \tau_{\c{par5th}}^2 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & \tau_{\c{I-IV-V}}^2 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & \rho_{145,154} & \tau_{\c{I-V-IV}}^2 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & \rho_{145,156} & \rho_{154,156} & \tau_{\c{I-V-VI}}^2 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & \rho_{145,415} & \rho_{154,415} & \rho_{156,415} & \tau_{\c{IV-I-V}}^2 
+\end{array}\right] 
+\right)
+\]
+\normalsize
+
+\noindent
+and the model with random effects `(Instrument + Voice + Harmony | Subject)` would look the same, except the 0's in the variance-covariance matrix above would be replaced with additional correlations. 
+
+The estimated $\beta$'s, $\tau$'s and $\rho$'s can be read off the `display` output below.
+
+\begin{itemize}
+  \item The $\hat\beta$'s and their SE's can be read from the \texttt{coef.est} and \texttt{coef.se} columns in the first table in the output.
+  \item The $\hat\tau$'s and $\hat\rho$'s can be read from the second table, labelled \texttt{Error terms:}, with the $\hat\tau$'s in the \texttt{Std.Dev} column, and the nonzero $\hat\rho$'s in the columns labelled \texttt{corr}.
+\end{itemize}
+
+```{r display-2-rand.full}
+display(lmer.rand.full)
+```
+
+**Because they are design variables in the experiment, the main effects for the three experimental factors, Instrument, Harmony, and Voice, should be included in all models, regardless of what we found about their influence or lack of influence on ratings. (Interactions among the design variables need not be included if you do not find them important, but the main effects for the design variables should always be in my models.)**
+
+
+## C. Person Covariates.
+
+**I will begin with your best model from part B, which is `lmer.rand.full`.**
+
+```
+lmer.rand.full <- lmer(Classical ~ Instrument + Harmony + Voice +
+                        Harmony:Voice + 
+                        (1|Subject) +
+                        (0 + Instrument|Subject) +
+                        (0 + Harmony|Subject) +
+                        (0 + Voice|Subject),
+                       data=fulldata, REML=F)
+```
+
+### C.1 Selecting fixed effects in addition to three experimental factors
+
+**I will determine which person covariates should be added to the model as fixed effects.**
+
+I note that the "person covariates" are level-2 covariates (persons are the "groups" in this analysis) so they will only enter as fixed effects, not random effects in the `(...|Subject)` notation.
+
+I will work with the smaller data set `nomissdata` since I need a data set that will be the same no matter which person covariates I put in the model, and in the larger data set `fulldata` many of the person covariates have missing values (so the actual data set would change, depending on what covariates are in the model and where the missing values for those covariates were, as I am comparing models).
+
+I will start with `fitLMER.fnc` from `library(LMERConvenienceFunctions)`. This does backwards selection of fixed effects, followed by forward selection of random effects, and then one more pass of backwards selection of fixed effects.  I will have it skip the forward selection of random effects (by not suggesting any new random effects for it to try). I will also need to specify that `fitLMER.fnc` should use AIC or BIC for variable selection.
+
+```{r responses-numeric}
+library(LMERConvenienceFunctions)
+
+nomissdata$Classical <- as.numeric(nomissdata$Classical)
+nomissdata$Popular <- as.numeric(nomissdata$Popular)
+```
+
+The categorical variables should be converted to factors before we can do `fitLMER.fnc`.
+
+```{r nomissdata-cat}
+nomissdata.cat <- nomissdata
+names(nomissdata.cat)
+
+# Let's see which variables "look like" they should be categorical:
+apply(nomissdata.cat[,8:24],2,table)
+```
+
+
+```{r cat-vars}
+# This is a list of variables that should be categorical
+cat.vars <- c("PachListen", "ClsListen", "KnowRob", "KnowAxis", "CollegeMusic",
+              "APTheory", "Composing", "PianoPlay", "GuitarPlay")
+
+nomissdata.cat[,cat.vars] <- apply(nomissdata.cat[,cat.vars],2,as.factor)
+
+str(nomissdata.cat)
+```
+
+Now I am ready to try `fitLMER.fnc` on the new data set with categorical variables...
+
+```{r big-formula}
+big.predictors <- names(nomissdata)[-c(1,2,24,25,26)]
+big.fla <- paste("Classical ~", paste(big.predictors,collapse=" + "),
+                 "+ Voice:Harmony + (Instrument + Voice + Harmony || Subject)")
+
+# No Voice and Harmony interaction
+big.fla.novh <- paste("Classical ~", paste(big.predictors, collapse=" + "),
+                      "+ (Instrument + Voice + Harmony || Subject)")
+
+# I am omitting the following variables from the set of predictors 
+# that I want to start with for backward selection:
+
+names(nomissdata)[c(1,2,24,25,26)]
+```
+
+
+```{r lmer-aic-bic-cat}
+lmer.big.cat <- lmer(big.fla, data=nomissdata.cat, REML=F)
+lmer.big.cat.novh <- lmer(big.fla.novh, data=nomissdata.cat, REML=F)
+
+# Let's see what fitLMER.fnc does with it...
+
+lmer.AIC.cat <- fitLMER.fnc(lmer.big.cat, backfit.on="t", method="AIC",
+                            prune.ranefs=F,
+                        log.file.name="lmerAICcat.log")
+
+display(lmer.AIC.cat)
+summary(lmer.AIC.cat)$coef
+
+lmer.BIC.cat <- fitLMER.fnc(lmer.big.cat, backfit.on="t", method="BIC",
+                            prune.ranefs=F,
+                        log.file.name="lmerBICcat.log")
+
+display(lmer.BIC.cat)
+summary(lmer.BIC.cat)$coef
+```
+
+```{r formula-vh}
+# Display formula of final selected models
+formula(lmer.AIC.cat)
+formula(lmer.BIC.cat)
+```
+
+AIC and BIC picked the same models, and they both kept the interaction term between Harmony and Voice and three design variables. The 12 person level covariates chosen by AIC and BIC were:
+\begin{itemize}
+\item X16.minus.17
+\item ConsNotes
+\item PachListen
+\item ClsListen
+\item KnowRob
+\item KnowAxis
+\item X1990s2000s
+\item X1990s2000s.minus.1960s1970s
+\item NoClass
+\item APTheory
+\item Composing
+\item GuitarPlay
+\end{itemize}
+
+```{r lmer-aic-bic-cat-novh}
+## Let's see what fitLMER.fnc does without interaction with Voice and Harmony
+
+lmer.AIC.cat.novh <- fitLMER.fnc(lmer.big.cat.novh, backfit.on="t", method="AIC", prune.ranefs=F,
+                        log.file.name="lmerAICcatnovh.log")
+
+display(lmer.AIC.cat.novh)
+summary(lmer.AIC.cat.novh)$coef
+
+lmer.BIC.cat.novh <- fitLMER.fnc(lmer.big.cat.novh, backfit.on="t", method="BIC", prune.ranefs=F,
+                        log.file.name="lmerBICcatnovh.log")
+
+display(lmer.BIC.cat.novh)
+summary(lmer.BIC.cat.novh)$coef
+```
+
+```{r formula-novh}
+# Display formula of final selected models
+formula(lmer.AIC.cat.novh)
+formula(lmer.BIC.cat.novh)
+```
+
+AIC and BIC picked the same models when we exclude the interaction between Voice and Harmony. The 12 person covariates chosen are different from what we got when we included the interaction between Voice and Harmony (`X1990s2000s` got removed and `PianoPlay` got added).
+
+```{r vifs}
+vif(lmer.AIC.cat)
+vif(lmer.BIC.cat)
+vif(lmer.AIC.cat.novh)
+vif(lmer.BIC.cat.novh)
+```
+
+Based on the `fitLMER.fnc` work and VIFs, the person level covariates that I would add to the model would be the ones chosen by AIC and BIC and including the interaction between Voice and Harmony. This is because adding the Harmony:Voice interaction reduced the VIFs.
+
+### C.2 Random slopes for design variables and their interactions
+
+I will repeat the same model selection exercise we did before for the random effects.
+
+```{r lmer-aic-cat-dic}
+DIC.ml <- function(M) DIC(update(M,REML=F))
+
+lmer.AIC.i <- update(lmer.AIC.cat, . ~ . - (0+Voice|Subject) - (0+Harmony|Subject)) 
+lmer.AIC.v <- update(lmer.AIC.cat, . ~ . - (0+Instrument|Subject) - (0+Harmony|Subject))
+lmer.AIC.h <- update(lmer.AIC.cat, . ~ . - (0+Instrument|Subject) - (0+Voice|Subject))
+lmer.AIC.iv <- update(lmer.AIC.cat, . ~ . - (0+Harmony|Subject))
+lmer.AIC.ih <- update(lmer.AIC.cat, . ~ . - (0+Voice|Subject))
+lmer.AIC.vh <- update(lmer.AIC.cat, . ~ . - (0+Instrument|Subject))
+lmer.AIC.ivh <- lmer.AIC.cat
+
+print(x <- rbind(
+  lmer.AIC.i=c(DIC=DIC.ml(lmer.AIC.i)),
+  lmer.AIC.v=c(DIC=DIC.ml(lmer.AIC.v)),
+  lmer.AIC.h=c(DIC=DIC.ml(lmer.AIC.h)),
+  lmer.AIC.iv=c(DIC=DIC.ml(lmer.AIC.iv)),
+  lmer.AIC.ih=c(DIC=DIC.ml(lmer.AIC.ih)),
+  lmer.AIC.vh=c(DIC=DIC.ml(lmer.AIC.vh)),
+  lmer.AIC.ivh=c(DIC=DIC.ml(lmer.AIC.ivh)))
+  )
+```
+
+```{r lmer-bic-cat-dic}
+lmer.BIC.i <- update(lmer.BIC.cat, . ~ . - (0+Voice|Subject) - (0+Harmony|Subject)) 
+lmer.BIC.v <- update(lmer.BIC.cat, . ~ . - (0+Instrument|Subject) - (0+Harmony|Subject))
+lmer.BIC.h <- update(lmer.BIC.cat, . ~ . - (0+Instrument|Subject) - (0+Voice|Subject))
+lmer.BIC.iv <- update(lmer.BIC.cat, . ~ . - (0+Harmony|Subject))
+lmer.BIC.ih <- update(lmer.BIC.cat, . ~ . - (0+Voice|Subject))
+lmer.BIC.vh <- update(lmer.BIC.cat, . ~ . - (0+Instrument|Subject))
+lmer.BIC.ivh <- update(lmer.BIC.cat, . ~ . )
+
+print(x <- rbind(
+  lmer.BIC.i=c(DIC=DIC.ml(lmer.BIC.i)),
+  lmer.BIC.v=c(DIC=DIC.ml(lmer.BIC.v)),
+  lmer.BIC.h=c(DIC=DIC.ml(lmer.BIC.h)),
+  lmer.BIC.iv=c(DIC=DIC.ml(lmer.BIC.iv)),
+  lmer.BIC.ih=c(DIC=DIC.ml(lmer.BIC.ih)),
+  lmer.BIC.vh=c(DIC=DIC.ml(lmer.BIC.vh)),
+  lmer.BIC.ivh=c(DIC=DIC.ml(lmer.BIC.ivh)))
+  )
+```
+
+We end up with `lmer.AIC.ivh`, which is the same as the model that we got from backwards elimination in part C.1.
+
+### C.3 Residual plots
+
+Residual plots for `lmer.AIC.ivh` model is shown below.
+
+Note: For some reason, the hlm_resid function in library(HLMdiag) wasn't producing the 2nd level residuals ($\eta$'s), and so I just extracted raw residuals directly:
+\begin{itemize}
+\item Conditional residuals are in `residuals(fitted.lmer.model)`
+\item $\eta$'s are in `ranef(fitted.lmer.model)`
+\end{itemize}
+
+```{r residual-plots, fig.height=10,fig.width=8}
+res.cond <- residuals(lmer.AIC.ivh)
+fit.cond <- fitted(lmer.AIC.ivh)
+
+eta <- ranef(lmer.AIC.ivh)$Subject
+fit.grp <- sapply(split(fit.cond,nomissdata.cat$Subject),mean)
+
+par(mfcol=c(4,3))
+
+# 1
+
+plot(res.cond ~ fit.cond,xlab="Conditional Fitted Values Per Listener",
+     ylab="Conditional Residuals",
+     main="Level 1 Residuals")
+abline(h=0)
+
+qqnorm(res.cond,ylab="Conditional Residual Quantiles", main="Level 1 Residuals")
+qqline(res.cond)
+
+# 2
+
+plot(eta$"(Intercept)" ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Intercept ",eta)))
+abline(h=0)
+
+qqnorm(eta$"(Intercept)",ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Intercept ",eta)))
+qqline(eta$"(Intercept)")
+
+# 3
+
+plot(eta$Instrumentguitar ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Instrument=guitar ",eta)))
+abline(h=0)
+
+qqnorm(eta$Instrumentguitar,ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Instrument=guitar ",eta)))
+qqline(eta$Instrumentguitar)
+
+# 4 
+
+plot(eta$Instrumentpiano ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Instrument=piano ",eta)))
+abline(h=0)
+
+qqnorm(eta$Instrumentpiano,ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Instrument=piano ",eta)))
+qqline(eta$Instrumentpiano)
+
+# 5 
+
+plot(eta$Instrumentstring ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Instrument=string ",eta)))
+abline(h=0)
+
+qqnorm(eta$Instrumentstring,ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Instrument=string ",eta)))
+qqline(eta$Instrumentstring)
+
+# 6
+
+plot(eta$Voicecontrary ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Voice=contrary ",eta)))
+abline(h=0)
+
+qqnorm(eta$Voicecontrary,ylab=expression(paste(eta," Quantiles")),
+       main=expression(paste("Voice=contrary ",eta)))
+qqline(eta$Voicecontrary)
+```
+
+
+```{r residual-plots-2, fig.height=10,fig.width=8}
+
+par(mfcol=c(4,3))
+
+
+## 7
+
+plot(eta$Voicepar3rd ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Voice=par3rd ",eta)))
+abline(h=0)
+
+qqnorm(eta$Voicepar3rd,ylab=expression(paste(eta," Quantiles")),
+       main=expression(paste("Voice=par3rd ",eta)))
+qqline(eta$Voicepar3rd)
+
+## 8
+
+plot(eta$Voicepar5th~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Voice=par5th ",eta)))
+abline(h=0)
+
+qqnorm(eta$Voicepar5th,ylab=expression(paste(eta," Quantiles")),
+       main=expression(paste("Voice=par5th ",eta)))
+qqline(eta$Voicepar5th)
+
+## 9
+
+plot(eta$"HarmonyI-IV-V"  ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Harmony=I-IV-V ",eta)))
+abline(h=0)
+
+qqnorm(eta$"HarmonyI-IV-V",ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Harmony=I-IV-V ",eta)))
+qqline(eta$"HarmonyI-IV-V")
+
+## 10
+
+plot(eta$"HarmonyI-V-IV" ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Harmony=I-V-IV ",eta)))
+abline(h=0)
+
+qqnorm(eta$"HarmonyI-V-IV",ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Harmony=I-V-IV ",eta)))
+qqline(eta$"HarmonyI-V-IV")
+
+## 11
+
+plot(eta$"HarmonyI-V-VI" ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Harmony=I-V-VI ",eta)))
+abline(h=0)
+
+qqnorm(eta$"HarmonyI-V-VI",ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Harmony=I-V-VI ",eta)))
+qqline(eta$"HarmonyI-V-VI")
+
+## 12
+
+plot(eta$"HarmonyIV-I-V" ~ fit.grp,xlab="Mean Fitted Values Per Listener",
+     ylab=expression(eta),
+     main=expression(paste("Harmony=IV-I-V ",eta)))
+abline(h=0)
+
+qqnorm(eta$"HarmonyIV-I-V",ylab=expression(paste(eta," Quantiles")), 
+       main=expression(paste("Harmony=IV-I-V ",eta)))
+qqline(eta$"HarmonyIV-I-V")
+
+```
+
+All these residual plots and the QQ-plots look pretty good.  The only one that looks a bit strange is the first plot, i.e., the plot of the level-1 conditional residuals.  It is seriated (points fall along lines within the plot), but that is essentially because all of the fixed effect predictors are discrete.
+
+
+### C.4 Coefficients for the final model
+
+I will briefly interpret the effect of each variable kept in the final model, on Classical ratings.
+
+From the summary of the fixed effect estimates (the $\hat\beta$'s),
+```{r summary-vif-lmer-aic-ivh}
+round(summary(lmer.AIC.ivh)$coef,2)
+vif(lmer.AIC.ivh)
+```
+
+There don't appear to be serious collinearities, so we can infer from the fixed effects coefficient table above that
+
+\begin{itemize}
+  \item The harmony I-V-VI adds nearly a point on average to the Classical rating, vs. the "baseline" harmony I-IV-V.  The other harmonies do not really change the Classical rating much. Listeners generally thing I-V-IV is a more classical sounding harmony structure.
+  \item The instrument "piano" adds over 1.5 points to the Classical rating, vs. the baseline instrument "guitar".  The instrument "string" adds over 3.5 points to the Classical rating, vs. "guitar". Listeners think piano, and especially strings, sound more classical than guitar.
+  \item The voice-leading patterns "parallel 3rds" and "parallel 5ths" reduce the Classical rating by roughly 0.3 and 0.2 points, respectively, relative to the baseline "contrary motion". Listeners think contrary motion sounds mildly more classical than the other two voice-leading patterns.
+  \item We don't know what `X16.minus17` is, but it has a small negative effect on Classical ratings.
+  \item People who concentrate on the notes when listening have classical ratings that decrease as their level of concentration increases.
+  \item The pattern with `PachListen` (familiarity with Pachelbel's Canon) and `ClsListen` (how much do you listen to classical music) is not straightforward.  For example, listeners who scored 4 out of 5 on these two measures added nearly 1.5, and nearly 6 points, respectively, to their Classical ratings, on average, relative to the baseline category of 0 ( = `` not at all'') on each variable.  But listeners who scored 5 out of 5 on these measures actually reduced their Classical ratings somewhat, on average, relative to category 0.  However, these may be due in part to a small-sample bias issue, since only one listener scored 4 on either PachListen or ClsListen (See calculations below.)
+  \item The patterns with KnowRob (have you heard Rob Paravonian’s Pachelbel Rant) and KnowAxis (have you heard Axis of Evil’s Comedy bit on the 4 Pachelbel chords in popular music?) is more straightforward.  Relative to baseline category 0 (= ``not at all''),  listeners who express modest familiarity with the Rob Paravonian bit have lower Classical ratings by about 0.5 points, whereas those with modest familiarity with the Axis of Awesome bit, reduce their classical ratings by more than six points. The giant jump ($\hat\beta_{KNowAxis=1}-6.05$) may be mainly a small-sample bias issue, since only one listener scored in category 1 on this variable (See calculations below.) Having the highest familiarity with Rob Paravonian adds 1.3 points to the Classical rating, while having the highest familiarity with the Axis of Awesome bit reduces Classical rating by about 0.5 points.
+  \item Each additional point of familiarity with music from the 1990's conveys a small reduction in Classical ratings on average, but each additional point in the contrast between familiarity with music from the 1990's vs familiarity with music from the 1960's conveys a similar-sized increase in Classical ratings; it seems likely that these two effects basically cancel each other out.
+  \item Each additional Music class that a listener has taken increases their Classical scores by about 0.7; on the other hand, having taken AP Theory conveys about a 3 point increase in classical ratings. 
+  \item The pattern of estimated coefficients for Composing is again strange, with a score of 5 on the Composing variable associated with a 1.8 point drop in Classical ratings, breaking the pattern established by the other levels of Composing.  Once again, this may be mostly a small-sample bias issue since only one listener is in category 5 on the Composing variable (See calculations below.)
+  \item The pattern of coefficients for GuitarPlay is also hard to understand, but the coefficients for categories 2 and 4 may be in part a consequence of small sample bias (See calculations below.)
+\end{itemize}
+
+Here are the calculations that show that categories of some of the predictors with anomalous coefficients also involve only one or two examinees, and so the anomalies may be simply small-sample bias issues:
+
+```{r small-sample-bias}
+table(nomissdata.cat$Selfdeclare)
+with(nomissdata.cat,table(Subject[Selfdeclare=="6"]))
+
+table(nomissdata.cat$PachListen)
+with(nomissdata.cat,table(Subject[PachListen=="4"]))
+
+table(nomissdata.cat$ClsListen)
+with(nomissdata.cat,table(Subject[ClsListen=="4"]))
+
+table(nomissdata.cat$KnowAxis)
+with(nomissdata.cat,table(Subject[KnowAxis=="1"]))
+
+table(nomissdata.cat$Composing)
+with(nomissdata.cat,table(Subject[Composing=="5"]))
+
+table(nomissdata.cat$GuitarPlay)
+with(nomissdata.cat,table(Subject[GuitarPlay=="2"]))
+with(nomissdata.cat,table(Subject[GuitarPlay=="4"]))
+```
+
+```{r coeff-report, results='hide'}
+# Code for generating table for report
+texreg(lmer.AIC.ivh,stars=numeric(0),
+       caption="Model after selection of person covariates",
+       single.row=T,
+       booktabs = T,
+       dcolumn=T,
+       longtable=T,
+       label="table:pers-cov",
+       custom.model.names=c("Additive Fixed Effects"),
+       use.packages=F)
+```
+
+
+## D. Musicians vs. Non-musicians
+
+One of the secondary hypotheses of the researchers is that people who self-identify as musicians may be influenced by things that do not influence non-musicians. I will dichotomize “Self-declare” (“are you a musician?”) so that about half the participants are categorized as self-declared musicians, and half not. I will examine and report on any interactions between the dichotomized musician variable and other predictors in the model. I will also check to see if the results are sensitive to where you dichotomize.
+
+Interestingly, `Selfdeclare` was not one of the variables in the final model selected by `fitLMER.fnc` above.  Here is the result of dichotomizing it and trying to include it in the model.
+
+Since there are 1540 observations in the `nomissdata.cat` data frame and, as shown in the table below, about half are accounted for in the first two categories of `Selfdeclare`, we'll start by dichotomizing between 2 and 3.
+
+```{r dichotomize-2}
+cumsum(table(nomissdata.cat$Selfdeclare))
+
+table(Musician <- with(nomissdata.cat,ifelse(Selfdeclare<=2,0,1)))
+
+big.fla.with.Musician <- paste("Classical ~ (",
+                               paste(big.predictors, collapse=" + "),
+                 "- Selfdeclare)*Musician + Voice:Harmony + (Instrument + Voice + Harmony || Subject)")
+
+big.fla.with.Musician
+
+lmer.big.with.Musician <- lmer(big.fla.with.Musician,data=nomissdata.cat)
+
+display(lmer.big.with.Musician)
+
+round(summary(lmer.big.with.Musician)$coef,2)
+
+large.fixed.effects <- function(M) {
+  x <- as.data.frame(summary(M)$coef)
+  return(round(x[abs(x$"t value")>=2.00,],2))
+}
+
+large.fixed.effects(lmer.big.with.Musician)
+```
+
+We see that
+
+\begin{itemize}
+\item Many possible interactions with \texttt{Musician} are dropped because of collinearities in the model; and 
+\item \texttt{Musician} does seem to have a significant interaction the design variable \texttt{Harmony}.
+\end{itemize}
+
+Next, we see what happens if we try to dichotomize Musician at different places:
+```{r dichotomize-other}
+table(nomissdata.cat$Selfdeclare)
+
+table(Musician <- with(nomissdata.cat,ifelse(Selfdeclare<=1,0,1)))
+lmer.Musician.1 <- lmer(big.fla.with.Musician,data=nomissdata.cat)
+large.fixed.effects(lmer.Musician.1)
+
+## This is our original dichotomization:
+table(Musician <- with(nomissdata.cat,ifelse(Selfdeclare<=2,0,1)))
+lmer.Musician.2 <- lmer(big.fla.with.Musician,data=nomissdata.cat)
+large.fixed.effects(lmer.Musician.2)
+
+table(Musician <- with(nomissdata.cat,ifelse(Selfdeclare<=3,0,1)))
+lmer.Musician.3 <- lmer(big.fla.with.Musician,data=nomissdata.cat)
+large.fixed.effects(lmer.Musician.3)
+
+table(Musician <- with(nomissdata.cat,ifelse(Selfdeclare<=4,0,1)))
+lmer.Musician.4 <- lmer(big.fla.with.Musician,data=nomissdata.cat)
+large.fixed.effects(lmer.Musician.4)
+
+table(Musician <- with(nomissdata.cat,ifelse(Selfdeclare<=5,0,1)))
+lmer.Musician.5 <- lmer(big.fla.with.Musician,data=nomissdata.cat)
+large.fixed.effects(lmer.Musician.5)
+```
+
+It's clear that the interactions with `Musician` vary depending on where we dichotomize `Selfdeclare` to get the Musician variable.
+
+\begin{itemize}
+  \item For dichotomization at 1, the significant interaction with \texttt{Musician} is \texttt{OMSI:Musician}.
+  \item For dichotomization at 2 or below, the significant interaction with \texttt{Musician} is \texttt{Harmony:Musician}.
+  \item For dichotomization at 3 or below, the significant interaction with \texttt{Musician} is \texttt{Harmony:Musician}.
+  \item For dichotomization at 4 or below, the significant interaction with \texttt{Musician} is \texttt{Harmony:Musician}.
+  \item For dichotomization at 5 or below, there is no significant interaction with \texttt{Musician}.
+\end{itemize}
+
+Based on the result, it seems like the interaction between `Harmony` and `Musician` should be included, and that dichotomization should occur around 2, 3, or 4.
+
