@@ -1,5 +1,6 @@
 ---
-abstract: |
+# Abstract
+
   This paper analyzed data collected by Ivan Jimenez, a composer and
   musicologist visiting the University of Pittsburgh, and student
   Vincent Rossi, for a study measuring the influence of instrument,
@@ -26,9 +27,9 @@ abstract: |
   non-musicians rate them. Limitations of the study include a large
   amount of missing data and a potential small sample bias affecting
   some coefficient estimates of the final linear model.
+
 author:
-- |
-  Myung Kyung (Rachel) Hyeon [^1]\
+  Myung Kyung (Rachel) Hyeon [^1] \
   `mhyeon@andrew.cmu.edu`
 bibliography:
 - final-references.bib
