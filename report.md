@@ -1,8 +1,8 @@
 # Effect of Instrument, Harmonic Motion, and Voice Leading on Classical Music Classification
 
-### Author: Myung Kyung (Rachel) Hyeon[^1]
+Myung Kyung (Rachel) Hyeon[^1]
 
-### Date: December 11, 2022
+Date: December 11, 2022
 
 [^1]: Department of Statistics and Data Science, Carnegie Mellon University
 
