@@ -148,11 +148,11 @@ similar (Appendix A.5). Although three quantitative variables (`OMSI`,
 transformations were conducted to make the results as immediately
 interpretable.
 
-**Table 1: Description of 28 variables in the data set.**
+### Table 1: Description of 28 variables in the data set.
 
 
 | **Variable**                 | **Variable Definition**                                                                                  |
-|------------------------------|:---------------------------------------------------------------------------------------------------------|
+|:-----------------------------|:---------------------------------------------------------------------------------------------------------|
 | X                            | Line number in the data set (IGNORE.)                                                                    |
 | Classical                    | How classical does the stimulus sound?                                                                   |
 | Popular                      | How popular does the stimulus sound?                                                                     |
@@ -292,22 +292,22 @@ improve the distribution to warrant a transformation while sacrificing
 interpretability (Appendix A.5). Therefore, no transformation was
 applied to any variables as mentioned above in the Data section.
 
-**Figure 1: Histograms of categorical and continuous variables**
+### Figure 1: Histograms of categorical and continuous variables
 
 ![Histograms of categorical and continuous variables
-](images\000024.png)
+](images/000024.png)
 
 ![Histograms of categorical and continuous variables
-](images\000025.png)
+](images/000025.png)
 
 ![Histograms of categorical and continuous variables
-](images\000026.png)
+](images/000026.png)
 
 ![Histograms of categorical and continuous variables
-](images\000027.png)
+](images/000027.png)
 
 ![Histograms of categorical and continuous variables
-](images\000030.png)
+](images/000030.png)
 
 ## What experimental factor, or combinations of factors, has the strongest influence on ratings?
 
@@ -348,128 +348,123 @@ participant, and random slopes for `Instrument` and `Harmony`). The
 model chosen after completing steps 1 to 3 was Model 3.7, and the model
 equation can be found in Appendix B.4.
 
-::: tabular
-\|c\|c\|c\|c\|c\|c\|c\| & & & &\
-& & & & Instrument & Harmony & Voice\
-& & & & & &\
-& & & & & &\
-& & Voice and Harmony & & & &\
-& & All two-way & & & &\
-& & All three-way & & & &\
-& & & & & &\
-& & & & & &\
-& & Voice and Harmony & & & &\
-& & All two-way & & & &\
-& & All three-way & & & &\
-& & Voice and Harmony & & & &\
-& & Voice and Harmony & & & &\
-& & Voice and Harmony & & & &\
-& & Voice and Harmony & & & &\
-& & Voice and Harmony & & & &\
-& & Voice and Harmony & & & &\
-& & Voice and Harmony & & & &\
-:::
+### Table 2: Experimental factors, interactions, and random effects present in Models 1.0 to 1.4, Models 2.0 to 2.4, and Models 3.1 to 3.7.
 
-::: tabular
-\| P0.2 \| P0.2 \| P0.2 \| P0.2 \| **Model** & **AIC** & **BIC** &
-**DIC**\
-& 11918 & 11930 & 11918\
-& 11198 & 11251 & 11198\
-& 11193 & 11281 & 11193\
-& 11209 & 11281 & 11209\
-& 11221 & 11437 & 11221\
-& 11430 & 11448 & 11424\
-& 10431 & 10489 & 10411\
-& 10418 & 10511 & 10386\
-& 10432 & 10583 & 10380\
-& 10438 & 10659 & 10362\
-& 10044 & 10172 & 10000\
-& 10334 & 10485 & 10282\
-& 10430 & 10558 & 10386\
-& 9902 & 10089 & 9838\
-& 10056 & 10219 & 10000\
-& 10346 & 10532 & 10282\
-& 9901 & 10122 & 9825\
-:::
+| Model | 3 Design Variables | Interactions      | Random Intercept | Random Slope for Instrument | Random Slope for Harmony | Random Slope for Voice |
+|-------|--------------------|-------------------|------------------|-----------------------------|--------------------------|------------------------|
+| 1.0   | N                  | X                 | N                | N                           | N                        | N                      |
+| 1.1   | Y                  | X                 | N                | N                           | N                        | N                      |
+| 1.2   | Y                  | Voice and Harmony | N                | N                           | N                        | N                      |
+| 1.3   | Y                  | All two-way       | N                | N                           | N                        | N                      |
+| 1.4   | Y                  | All three-way     | N                | N                           | N                        | N                      |
+| 2.0   | N                  | X                 | Y                | N                           | N                        | N                      |
+| 2.1   | Y                  | X                 | Y                | N                           | N                        | N                      |
+| 2.2   | Y                  | Voice and Harmony | Y                | N                           | N                        | N                      |
+| 2.3   | Y                  | All two-way       | Y                | N                           | N                        | N                      |
+| 2.4   | Y                  | All three-way     | Y                | N                           | N                        | N                      |
+| 3.1   | Y                  | Voice and Harmony | Y                | Y                           | N                        | N                      |
+| 3.2   | Y                  | Voice and Harmony | Y                | N                           | Y                        | N                      |
+| 3.3   | Y                  | Voice and Harmony | Y                | N                           | N                        | Y                      |
+| 3.4   | Y                  | Voice and Harmony | Y                | Y                           | Y                        | N                      |
+| 3.5   | Y                  | Voice and Harmony | Y                | Y                           | N                        | Y                      |
+| 3.6   | Y                  | Voice and Harmony | Y                | N                           | Y                        | Y                      |
+| 3.7   | Y                  | Voice and Harmony | Y                | Y                           | Y                        | Y                      |
 
-::: center
-::: longtable
-l D))9)0
+### Table 3: AIC, BIC, and DIC values for Models 1, 2 and 3.
 
-&\
-&\
-\
-(Intercept) & 4.95 (0.93)\
-HarmonyI-V-IV & 0.21 (0.20)\
-HarmonyI-V-VI & 1.27 (0.28)\
-HarmonyIV-I-V & -0.30 (0.20)\
-Instrumentpiano & 1.65 (0.24)\
-Instrumentstring & 3.59 (0.31)\
-Voicepar3rd & -0.31 (0.20)\
-Voicepar5th & -0.20 (0.20)\
-X16.minus.17 & -0.15 (0.05)\
-ConsNotes & -0.35 (0.07)\
-PachListen3 & -1.80 (0.66)\
-PachListen4 & 1.56 (0.93)\
-PachListen5 & -0.95 (0.52)\
-ClsListen1 & -0.28 (0.35)\
-ClsListen3 & 0.38 (0.42)\
-ClsListen4 & 6.25 (1.10)\
-ClsListen5 & -0.06 (0.54)\
-KnowRob1 & -0.54 (0.48)\
-KnowRob5 & 1.34 (0.43)\
-KnowAxis1 & -6.05 (1.37)\
-KnowAxis5 & -0.47 (0.33)\
-X1990s2000s & -0.15 (0.12)\
-X1990s2000s.minus.1960s1970s & 0.25 (0.09)\
-NoClass & 0.67 (0.18)\
-APTheory1 & 2.61 (0.38)\
-Composing1 & -0.47 (0.31)\
-Composing2 & 1.01 (0.48)\
-Composing3 & 0.41 (0.43)\
-Composing4 & 0.79 (0.55)\
-Composing5 & -1.84 (1.24)\
-GuitarPlay1 & 0.43 (0.60)\
-GuitarPlay2 & 3.48 (0.56)\
-GuitarPlay4 & 2.23 (0.99)\
-GuitarPlay5 & -4.50 (0.76)\
-HarmonyI-V-IV:Voicepar3rd & -0.42 (0.28)\
-HarmonyI-V-VI:Voicepar3rd & -0.71 (0.28)\
-HarmonyIV-I-V:Voicepar3rd & 0.75 (0.28)\
-HarmonyI-V-IV:Voicepar5th & -0.21 (0.28)\
-HarmonyI-V-VI:Voicepar5th & -0.53 (0.28)\
-HarmonyIV-I-V:Voicepar5th & 0.33 (0.28)\
-AIC & 6200.94\
-BIC & 6542.67\
-Log Likelihood & -3036.47\
-Num. obs. & 1540\
-Num. groups: Subject & 43\
-Var: Subject (Intercept) & 0.00\
-Var: Subject.1 Instrumentguitar & 0.81\
-Var: Subject.1 Instrumentpiano & 1.98\
-Var: Subject.1 Instrumentstring & 1.35\
-Cov: Subject.1 Instrumentguitar Instrumentpiano & 0.42\
-Cov: Subject.1 Instrumentguitar Instrumentstring & -0.81\
-Cov: Subject.1 Instrumentpiano Instrumentstring & 0.48\
-Var: Subject.2 Voicecontrary & 0.00\
-Var: Subject.2 Voicepar3rd & 0.12\
-Var: Subject.2 Voicepar5th & 0.04\
-Cov: Subject.2 Voicecontrary Voicepar3rd & 0.00\
-Cov: Subject.2 Voicecontrary Voicepar5th & 0.00\
-Cov: Subject.2 Voicepar3rd Voicepar5th & 0.07\
-Var: Subject.3 HarmonyI-IV-V & 0.00\
-Var: Subject.3 HarmonyI-V-IV & 0.13\
-Var: Subject.3 HarmonyI-V-VI & 1.68\
-Var: Subject.3 HarmonyIV-I-V & 0.04\
-Cov: Subject.3 HarmonyI-IV-V HarmonyI-V-IV & 0.00\
-Cov: Subject.3 HarmonyI-IV-V HarmonyI-V-VI & 0.00\
-Cov: Subject.3 HarmonyI-IV-V HarmonyIV-I-V & 0.00\
-Cov: Subject.3 HarmonyI-V-IV HarmonyI-V-VI & 0.16\
-Cov: Subject.3 HarmonyI-V-IV HarmonyIV-I-V & -0.05\
-Cov: Subject.3 HarmonyI-V-VI HarmonyIV-I-V & 0.09\
-Var: Residual & 2.44\
-:::
-:::
+| Model | AIC   | BIC   | DIC   |
+|-------|-------|-------|-------|
+| 1.0   | 11918 | 11930 | 11918 |
+| 1.1   | 11198 | 11251 | 11198 |
+| 1.2   | 11193 | 11281 | 11193 |
+| 1.3   | 11209 | 11281 | 11209 |
+| 1.4   | 11221 | 11437 | 11221 |
+| 2.0   | 11430 | 11448 | 11424 |
+| 2.1   | 10431 | 10489 | 10411 |
+| 2.2   | 10418 | 10511 | 10386 |
+| 2.3   | 10432 | 10583 | 10380 |
+| 2.4   | 10438 | 10659 | 10362 |
+| 3.1   | 10044 | 10172 | 10000 |
+| 3.2   | 10334 | 10485 | 10282 |
+| 3.3   | 10430 | 10558 | 10386 |
+| 3.4   | 9902  | 10089 | 9838  |
+| 3.5   | 10056 | 10219 | 10000 |
+| 3.6   | 10346 | 10532 | 10282 |
+| 3.7   | 9901  | 10122 | 9825  |
+
+### Table 4: Model after selection of person covariates
+ 
+|                                                  | Additive Fixed Effects |
+|--------------------------------------------------|------------------------|
+| (Intercept)                                      | 4.95 (0.93)            |
+| HarmonyI-V-IV                                    | 0.21 (0.20)            |
+| HarmonyI-V-VI                                    | 1.27 (0.28)            |
+| HarmonyIV-I-V                                    | -0.30 (0.20)           |
+| Instrumentpiano                                  | 1.65 (0.24)            |
+| Instrumentstring                                 | 3.59 (0.31)            |
+| Voicepar3rd                                      | -0.31 (0.20)           |
+| Voicepar5th                                      | -0.20 (0.20)           |
+| X16.minus.17                                     | -0.15 (0.05)           |
+| ConsNotes                                        | -0.35 (0.07)           |
+| PachListen3                                      | -1.80 (0.66)           |
+| PachListen4                                      | 1.56 (0.93)            |
+| PachListen5                                      | -0.95 (0.52)           |
+| ClsListen1                                       | -0.28 (0.35)           |
+| ClsListen3                                       | 0.38 (0.42)            |
+| ClsListen4                                       | 6.25 (1.10)            |
+| ClsListen5                                       | -0.06 (0.54)           |
+| KnowRob1                                         | -0.54 (0.48)           |
+| KnowRob5                                         | 1.34 (0.43)            |
+| KnowAxis1                                        | -6.05 (1.37)           |
+| KnowAxis5                                        | -0.47 (0.33)           |
+| X1990s2000s                                      | -0.15 (0.12)           |
+| X1990s2000s.minus.1960s1970s                     | 0.25 (0.09)            |
+| NoClass                                          | 0.67 (0.18)            |
+| APTheory1                                        | 2.61 (0.38)            |
+| Composing1                                       | -0.47 (0.31)           |
+| Composing2                                       | 1.01 (0.48)            |
+| Composing3                                       | 0.41 (0.43)            |
+| Composing4                                       | 0.79 (0.55)            |
+| Composing5                                       | -1.84 (1.24)           |
+| GuitarPlay1                                      | 0.43 (0.60)            |
+| GuitarPlay2                                      | 3.48 (0.56)            |
+| GuitarPlay4                                      | 2.23 (0.99)            |
+| GuitarPlay5                                      | -4.50 (0.76)           |
+| HarmonyI-V-IV:Voicepar3rd                        | -0.42 (0.28)           |
+| HarmonyI-V-VI:Voicepar3rd                        | -0.71 (0.28)           |
+| HarmonyIV-I-V:Voicepar3rd                        | 0.75 (0.28)            |
+| HarmonyI-V-IV:Voicepar5th                        | -0.21 (0.28)           |
+| HarmonyI-V-VI:Voicepar5th                        | -0.53 (0.28)           |
+| HarmonyIV-I-V:Voicepar5th                        | 0.33 (0.28)            |
+| AIC                                              | 6200.94                |
+| BIC                                              | 6542.67                |
+| Log Likelihood                                   | -3036.47               |
+| Num. obs.                                        | 1540                   |
+| Num. groups: Subject                             | 43                     |
+| Var: Subject (Intercept)                         | 0.00                   |
+| Var: Subject.1 Instrumentguitar                  | 0.81                   |
+| Var: Subject.1 Instrumentpiano                   | 1.98                   |
+| Var: Subject.1 Instrumentstring                  | 1.35                   |
+| Cov: Subject.1 Instrumentguitar Instrumentpiano  | 0.42                   |
+| Cov: Subject.1 Instrumentguitar Instrumentstring | -0.81                  |
+| Cov: Subject.1 Instrumentpiano Instrumentstring  | 0.48                   |
+| Var: Subject.2 Voicecontrary                     | 0.00                   |
+| Var: Subject.2 Voicepar3rd                       | 0.12                   |
+| Var: Subject.2 Voicepar5th                       | 0.04                   |
+| Cov: Subject.2 Voicecontrary Voicepar3rd         | 0.00                   |
+| Cov: Subject.2 Voicecontrary Voicepar5th         | 0.00                   |
+| Cov: Subject.2 Voicepar3rd Voicepar5th           | 0.07                   |
+| Var: Subject.3 HarmonyI-IV-V                     | 0.00                   |
+| Var: Subject.3 HarmonyI-V-IV                     | 0.13                   |
+| Var: Subject.3 HarmonyI-V-VI                     | 1.68                   |
+| Var: Subject.3 HarmonyIV-I-V                     | 0.04                   |
+| Cov: Subject.3 HarmonyI-IV-V HarmonyI-V-IV       | 0.00                   |
+| Cov: Subject.3 HarmonyI-IV-V HarmonyI-V-VI       | 0.00                   |
+| Cov: Subject.3 HarmonyI-IV-V HarmonyIV-I-V       | 0.00                   |
+| Cov: Subject.3 HarmonyI-V-IV HarmonyI-V-VI       | 0.16                   |
+| Cov: Subject.3 HarmonyI-V-IV HarmonyIV-I-V       | -0.05                  |
+| Cov: Subject.3 HarmonyI-V-VI HarmonyIV-I-V       | 0.09                   |
+| Var: Residual                                    | 2.44                   |
 
 In addition to the three design variables, interaction between Voice and
 Harmony, random intercept for each participant and three random slopes
