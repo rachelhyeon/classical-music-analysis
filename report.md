@@ -1,5 +1,12 @@
----
-# Abstract
+# Effect of Instrument, Harmonic Motion, and Voice Leading on Classical Music Classification
+
+### Author: Myung Kyung (Rachel) Hyeon[^1]
+
+### Date: December 11, 2022
+
+[^1]: Department of Statistics and Data Science, Carnegie Mellon University
+
+## Abstract
 
   This paper analyzed data collected by Ivan Jimenez, a composer and
   musicologist visiting the University of Pittsburgh, and student
@@ -28,14 +35,7 @@
   amount of missing data and a potential small sample bias affecting
   some coefficient estimates of the final linear model.
 
-author:
-  Myung Kyung (Rachel) Hyeon [^1] \
-  `mhyeon@andrew.cmu.edu`
-bibliography:
-- final-references.bib
-date: December 11, 2022
-title: Effect of Instrument, Harmonic Motion, and Voice Leading on
-  Classical Music Classification
+
 ---
 
 # Introduction
@@ -116,9 +116,7 @@ The raw data provided by Dr. Jimenez consisted of 2520 observations of
 experimental conditions (Appendix A.1). The data has two levels: level-1
 observations are ratings of how Classical each musical stimulus sounds,
 and level-2 groups are the set of stimuli that each listener rated. A
-brief description of all variables in the data set is presented in Table
-[\[table:vardef\]](#table:vardef){reference-type="ref"
-reference="table:vardef"}.
+brief description of all variables in the data set is presented in Table 1.
 
 From the raw data, we created two data sets for the analysis:
 
@@ -150,49 +148,39 @@ similar (Appendix A.5). Although three quantitative variables (`OMSI`,
 transformations were conducted to make the results as immediately
 interpretable.
 
-::: tabular
-\| P5cm \| m10.8cm \| **Variable** & **Variable Definition**\
-X & Line number in the data set (IGNORE.)\
-Classical & How classical does the stimulus sound?\
-Popular & How popular does the stimulus sound?\
-Subject & Unique subject ID\
-Harmony & Harmonic Motion (4 levels)\
-Instrument & Instrument (3 levels)\
-Voice & Voice Leading (3 levels)\
-Selfdeclare & Are you a musician? (1-6, 1=not at all)\
-OMSI & Score on a test of musical knowledge\
-X16.minus.17 & Auxiliary measure of listener's ability to distinguish
-classical vs popular music\
-ConsInstr & How much did you concentrate on the instrument while
-listening (0-5, 0=not at all)\
-ConsNotes & How much did you concentrate on the notes while listening?
-(0-5, 0=not at all)\
-Instr.minus.Notes & Difference between prev. two variable\
-PachListen & How familiar are you with Pachelbel's Canon in D (0-5,
-0=not at all)\
-ClsListen & How much do you listen to classical music? (0-5, 0=not at
-all)\
-KnowRob & Have you heard Rob Paravonian's Pachelbel Rant (0-5, 0=not at
-all)\
-KnowAxis & Have you heard Axis of Evil's Comedy bit on the 4 Pachelbel
-chords in popular music? (0-5, 0=not at all)\
-X1990s2000s & How much do you listen to pop and rock from the 90's and
-2000's? (0-5, 0=not at all)\
-X1990s2000s.minus.1960s1970s & Difference between prev variable and a
-similar variable referring to 60's and 70's pop and rock.\
-CollegeMusic & Have you taken music classes in college (0=no, 1=yes)\
-NoClass & How many music classes have you taken?\
-APTheory & Did you take AP Music Theory class in High School (0=no,
-1=yes)\
-Composing & Have you done any music composing (0-5, 0=not at all)\
-PianoPlay & Do you play piano (0-5, 0=not at all)\
-GuitarPlay & Do you play guitar (0-5, 0=not at all)\
-X1stInstr & How proficient are you at your first musical instrument
-(0-5, 0=not at all)\
-X2ndInstr & Same, for second musical instrument\
-first12 & In the experiment, which instrument was presented to the
-subject in the first 12 stimuli? (IGNORE.)\
-:::
+**Table 1: Description of 28 variables in the data set.**
+
+
+| **Variable**                 | **Variable Definition**                                                                                  |
+|------------------------------|:---------------------------------------------------------------------------------------------------------|
+| X                            | Line number in the data set (IGNORE.)                                                                    |
+| Classical                    | How classical does the stimulus sound?                                                                   |
+| Popular                      | How popular does the stimulus sound?                                                                     |
+| Subject                      | Unique subject ID                                                                                        |
+| Harmony                      | Harmonic Motion (4 levels)                                                                               |
+| Instrument                   | Instrument (3 levels)                                                                                    |
+| Voice                        | Voice Leading (3 levels)                                                                                 |
+| Selfdeclare                  | Are you a musician? (1-6, 1=not at all)                                                                  |
+| OMSI                         | Score on a test of musical knowledge                                                                     |
+| X16.minus.17                 | Auxiliary measure of listener's ability to distinguish classical vs popular music                        |
+| ConsInstr                    | How much did you concentrate on the instrument while listening (0-5, 0=not at all)                       |
+| ConsNotes                    | How much did you concentrate on the notes while listening? (0-5, 0=not at all)                           |
+| Instr.minus.Notes            | Difference between prev. two variable                                                                    |
+| PachListen                   | How familiar are you with Pachelbel's Canon in D (0-5, 0=not at all)                                     |
+| ClsListen                    | How much do you listen to classical music? (0-5, 0=not at all)                                           |
+| KnowRob                      | Have you heard Rob Paravonian's Pachelbel Rant (0-5, 0=not at all)                                       |
+| KnowAxis                     | Have you heard Axis of Evil's Comedy bit on the 4 Pachelbel chords in popular music? (0-5, 0=not at all) |
+| X1990s2000s                  | How much do you listen to pop and rock from the 90's and 2000's? (0-5, 0=not at all)                     |
+| X1990s2000s.minus.1960s1970s | Difference between prev variable and a similar variable referring to 60's and 70's pop and rock.         |
+| CollegeMusic                 | Have you taken music classes in college (0=no, 1=yes)                                                    |
+| NoClass                      | How many music classes have you taken?                                                                   |
+| APTheory                     | Did you take AP Music Theory class in High School (0=no, 1=yes)                                          |
+| Composing                    | Have you done any music composing (0-5, 0=not at all)                                                    |
+| PianoPlay                    | Do you play piano (0-5, 0=not at all)                                                                    |
+| GuitarPlay                   | Do you play guitar (0-5, 0=not at all)                                                                   |
+| X1stInstr                    | How proficient are you at your first musical instrument (0-5, 0=not at all)                              |
+| X2ndInstr                    | Same, for second musical instrument                                                                      |
+| first12                      | In the experiment, which instrument was presented to the subject in the first 12 stimuli? (IGNORE.)      |
 
 # Methods
 
@@ -280,14 +268,10 @@ The exploratory data analysis revealed that many variables are
 categorical variables with differing levels. `OMSI`, `ConsInstr`,
 `NoClass`, `X16.minus.17`, `Instr.minus.Notes`, and
 `X1990s2000s.minus.1960s1970s` were classified as continuous variables.
-Out of the remaining 20 variables in Table
-[\[table:vardef\]](#table:vardef){reference-type="ref"
-reference="table:vardef"} excluding the response variables `Classical`
-and `Popular`, nine variables (`PachListen`, `ClsListen`, `KnowRob`,
+Out of the remaining 20 variables in Table 1 excluding the response variables `Classical` and `Popular`, nine variables (`PachListen`, `ClsListen`, `KnowRob`,
 `KnowAxis`, `CollegeMusic`, `APTheory`, `Composing`, `PianoPlay`, and
 `GuitarPlay`) were converted to factors before applying `fitLMER.fnc`
-(Appendix C.1). Figure [5](#fig:histograms){reference-type="ref"
-reference="fig:histograms"} shows the distribution of 20 categorical and
+(Appendix C.1). Figure 5 shows the distribution of 20 categorical and
 continuous variables that are numeric. `OMSI`, `X16.minus.17`,
 `NoClass`, and `Selfdeclare` were right-skewed. From the distributions,
 we can see that most study participants answered that they are very
@@ -308,27 +292,27 @@ improve the distribution to warrant a transformation while sacrificing
 interpretability (Appendix A.5). Therefore, no transformation was
 applied to any variables as mentioned above in the Data section.
 
-![Histograms of categorical and continuous variables
-](000024.png){#fig:histograms width="\\linewidth"}
+**Figure 1: Histograms of categorical and continuous variables**
 
 ![Histograms of categorical and continuous variables
-](000025.png){#fig:histograms width="\\linewidth"}
+](images\000024.png)
 
 ![Histograms of categorical and continuous variables
-](000026.png){#fig:histograms width="\\linewidth"}
+](images\000025.png)
 
 ![Histograms of categorical and continuous variables
-](000027.png){#fig:histograms width="\\linewidth"}
+](images\000026.png)
 
 ![Histograms of categorical and continuous variables
-](000030.png){#fig:histograms width="\\linewidth"}
+](images\000027.png)
+
+![Histograms of categorical and continuous variables
+](images\000030.png)
 
 ## What experimental factor, or combinations of factors, has the strongest influence on ratings?
 
 To answer the first research question, model selection was conducted in
-four steps as mentioned in the Methods section above. Table
-[\[table:models\]](#table:models){reference-type="ref"
-reference="table:models"} shows the different combinations of
+four steps as mentioned in the Methods section above. Table 2 shows the different combinations of
 experimental factors, interactions, and random effects that were
 included in each of the 17 models that were compared throughout step 1
 to 3. Models 1.0 to 1.4 were compared in step one, Models 2.0 to 2.4
@@ -338,8 +322,7 @@ random effects selected after completing step three was used as a basis
 when selecting person covariates in step four of the model selection
 process.
 
-Table [\[table:aicbicdic\]](#table:aicbicdic){reference-type="ref"
-reference="table:aicbicdic"} shows the AIC, BIC, and DIC for each of the
+Table 3 shows the AIC, BIC, and DIC for each of the
 17 models compared. Between Models 1.0 to 1.4, AIC was the lowest for
 Model 1.2 (model with three design variables, `Harmony`, `Instrument`,
 and `Voice` and interaction between `Harmony` and `Voice`) and BIC was
@@ -503,16 +486,12 @@ than 10, which is a common threshold for serious collinearity between
 predictors in the model [@lecture-07]. The coefficient estimates for the
 fixed effects with their standard error, the coefficient estimates for
 random effects with their variances and covariances for the final model
-are shown in Table
-[\[table:pers-cov\]](#table:pers-cov){reference-type="ref"
-reference="table:pers-cov"}. Out of all three design variables and 12
+are shown in Table 4. Out of all three design variables and 12
 person covariates in the model, all predictors have statistically
 significant levels except for the variable `X1990s2000s`. Intrepretation
 of all fixed effects can be found in Appendix C.4.
 
-Based on the results presented in Table
-[\[table:pers-cov\]](#table:pers-cov){reference-type="ref"
-reference="table:pers-cov"}, we can answer the first research question,
+Based on the results presented in Table 4, we can answer the first research question,
 "What experimental factor, or combinations of factors, has the strongest
 influence on ratings?" which consist of three sub-questions:
 
@@ -562,9 +541,9 @@ In other words, `Musician` variable was 0 if the value of `Selfdeclare`
 was less than a certain threshold, $c$, where $c$ is a value between 1
 and 6 corresponding to the levels of the `Selfdeclare` variable.
 
-$$Musician_i = \left\{\begin{array}{rl}
-                  0, & \mbox{\it if $Selfdeclare\leq c$}\\
-                  1, & \mbox{\it otherwise}
+$$\text{Musician}_i = \left\{\begin{array}{rl}
+                  0, & \text{if Selfdeclare $\leq c$}\\
+                  1, & \text{otherwise}
                   \end{array}\right.$$
 
 Dichotomizing `Selfdeclare` variable so that about half the participants
@@ -598,7 +577,7 @@ dichotomize the `Selfdeclare` variable. Appendix D shows that:
     interaction between `Musician` variable and other predictors.
 
 Therefore, the presence or absence of interactions of the dichotomized
-"Musician" variable with design variables or with other person
+`Musician` variable with design variables or with other person
 covariates depends strongly on the value of $c$ in the above equation. A
 final determination of the question of interactions of a dichotomized
 version of the `Selfdeclare` with design factors and other terms in the
@@ -672,6 +651,3 @@ Finally, it would be interesting to repeat the analysis for Popular
 rating as the response variable, and compare the results to see which
 experimental factors influence the classification of music as
 "classical" or "popular".
-
-[^1]: Department of Statistics & Data Science, Carnegie Mellon
-    University
